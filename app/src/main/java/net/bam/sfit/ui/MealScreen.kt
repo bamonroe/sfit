@@ -6,10 +6,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -79,7 +80,14 @@ fun MealScreen(vm: MealViewModel, onBack: () -> Unit, onScan: () -> Unit) {
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+        ) {
             OutlinedTextField(
                 value = state.draft.name,
                 onValueChange = vm::setName,
@@ -117,15 +125,13 @@ fun MealScreen(vm: MealViewModel, onBack: () -> Unit, onScan: () -> Unit) {
                     modifier = Modifier.padding(top = 24.dp),
                 )
             } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    itemsIndexed(state.draft.ingredients, key = { _, it -> it.barcode + it.foodId }) { i, ing ->
-                        IngredientRow(
-                            ing = ing,
-                            onGrams = { vm.setGrams(i, it) },
-                            onRemove = { vm.removeAt(i) },
-                        )
-                        HorizontalDivider()
-                    }
+                state.draft.ingredients.forEachIndexed { i, ing ->
+                    IngredientRow(
+                        ing = ing,
+                        onGrams = { vm.setGrams(i, it) },
+                        onRemove = { vm.removeAt(i) },
+                    )
+                    HorizontalDivider()
                 }
                 Text(
                     "Total: ${state.draft.totalGrams.roundToInt()} g  ·  ${state.draft.totalKcal.roundToInt()} kcal",
