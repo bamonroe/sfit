@@ -32,6 +32,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -90,21 +91,27 @@ fun LibraryScreen(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 )
-                else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    item { SectionHeader("Meals", state.meals.size) }
-                    if (state.meals.isEmpty() && !state.loading) item { EmptyRow("No meals yet") }
-                    items(state.meals, key = { "m" + it.id }) { meal ->
-                        MealRow(meal, onClick = { vm.openMeal(meal) })
-                    }
+                else -> PullToRefreshBox(
+                    isRefreshing = state.loading,
+                    onRefresh = vm::load,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        item { SectionHeader("Meals", state.meals.size) }
+                        if (state.meals.isEmpty() && !state.loading) item { EmptyRow("No meals yet") }
+                        items(state.meals, key = { "m" + it.id }) { meal ->
+                            MealRow(meal, onClick = { vm.openMeal(meal) })
+                        }
 
-                    item { SectionHeader("Foods", state.totalFoods) }
-                    if (state.foods.isEmpty() && !state.loading) item { EmptyRow("No foods yet") }
-                    items(state.foods, key = { "f" + it.id }) { food ->
-                        FoodRow(food, onClick = { vm.openFood(food.id) })
+                        item { SectionHeader("Foods", state.totalFoods) }
+                        if (state.foods.isEmpty() && !state.loading) item { EmptyRow("No foods yet") }
+                        items(state.foods, key = { "f" + it.id }) { food ->
+                            FoodRow(food, onClick = { vm.openFood(food.id) })
+                        }
                     }
                 }
             }
-            if (state.loading || state.detailLoading) {
+            if (state.detailLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp))
             }
         }

@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -60,7 +61,11 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
             TableHeader(state.granularity, state.unit)
             HorizontalDivider()
 
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+            PullToRefreshBox(
+                isRefreshing = state.loading,
+                onRefresh = vm::load,
+                modifier = Modifier.fillMaxSize(),
+            ) {
                 when {
                     state.error != null -> Text(
                         state.error!!,
@@ -75,9 +80,6 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
                     else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(state.rows, key = { it.label }) { HistoryRowItem(it) }
                     }
-                }
-                if (state.loading) {
-                    CircularProgressIndicator(modifier = Modifier.padding(top = 32.dp))
                 }
             }
         }

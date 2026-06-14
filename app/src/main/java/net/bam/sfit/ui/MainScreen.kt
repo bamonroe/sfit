@@ -29,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -77,7 +78,7 @@ fun MainScreen(
             !state.configured -> Centered(padding) { UnconfiguredMessage(onOpenSettings) }
             state.loading && !state.hasGoal -> Centered(padding) { CircularProgressIndicator() }
             state.error != null -> Centered(padding) { ErrorMessage(state.error!!) { vm.refresh() } }
-            else -> TodayContent(state, Modifier.fillMaxSize().padding(padding))
+            else -> TodayContent(state, onRefresh = vm::refresh, Modifier.fillMaxSize().padding(padding))
         }
     }
 }
@@ -92,9 +93,11 @@ private fun Centered(padding: PaddingValues, content: @Composable () -> Unit) {
 
 private val MEAL_ORDER = listOf("breakfast", "lunch", "snacks", "dinner")
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TodayContent(state: DayState, modifier: Modifier) {
-    LazyColumn(modifier = modifier) {
+private fun TodayContent(state: DayState, onRefresh: () -> Unit, modifier: Modifier) {
+    PullToRefreshBox(isRefreshing = state.loading, onRefresh = onRefresh, modifier = modifier) {
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 24.dp),
@@ -119,6 +122,7 @@ private fun TodayContent(state: DayState, modifier: Modifier) {
                 item { MealHeader(meal, list.sumOf { it.consumedCalories }) }
                 items(list) { EntryRow(it) }
             }
+        }
         }
     }
 }
