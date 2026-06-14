@@ -42,6 +42,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.bam.sfit.data.Granularity
+import net.bam.sfit.data.HistoryRow
 import kotlin.math.roundToInt
 
 private val lossGreen = Color(0xFF2ECC71)

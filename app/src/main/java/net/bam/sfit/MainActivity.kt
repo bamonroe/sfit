@@ -32,13 +32,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import net.bam.sfit.data.AppRepository
 import net.bam.sfit.data.BarcodeFood
-import net.bam.sfit.data.DayCacheStore
 import net.bam.sfit.data.DraftStore
-import net.bam.sfit.data.HistoryCacheStore
-import net.bam.sfit.data.LibraryCacheStore
 import net.bam.sfit.data.LibraryMeal
-import net.bam.sfit.data.SettingsStore
+import net.bam.sfit.data.Repo
 import net.bam.sfit.ui.BulkAddViewModel
 import net.bam.sfit.ui.EditFoodScreen
 import net.bam.sfit.ui.EditMealScreen
@@ -58,13 +56,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val store = SettingsStore(applicationContext)
+        val repo = Repo.get(applicationContext)
         val draftStore = DraftStore(applicationContext)
-        val libraryCache = LibraryCacheStore(applicationContext)
-        val dayCache = DayCacheStore(applicationContext)
-        val historyCache = HistoryCacheStore(applicationContext)
         setContent {
-            SFitTheme { AppRoot(store, draftStore, libraryCache, dayCache, historyCache) }
+            SFitTheme { AppRoot(repo, draftStore) }
         }
     }
 }
@@ -73,24 +68,22 @@ private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, Ed
 
 @Composable
 private fun AppRoot(
-    store: SettingsStore,
+    repo: AppRepository,
     draftStore: DraftStore,
-    libraryCache: LibraryCacheStore,
-    dayCache: DayCacheStore,
-    historyCache: HistoryCacheStore,
 ) {
+    val store = repo.store
     var screen by remember { mutableStateOf(Screen.Main) }
     var editFood by remember { mutableStateOf<BarcodeFood?>(null) }
     var editMeal by remember { mutableStateOf<LibraryMeal?>(null) }
 
-    val factory = remember(store, draftStore, libraryCache, dayCache, historyCache) {
+    val factory = remember(repo, draftStore) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
-                modelClass.isAssignableFrom(MainViewModel::class.java) -> MainViewModel(store, dayCache)
-                modelClass.isAssignableFrom(HistoryViewModel::class.java) -> HistoryViewModel(store, historyCache)
+                modelClass.isAssignableFrom(MainViewModel::class.java) -> MainViewModel(repo)
+                modelClass.isAssignableFrom(HistoryViewModel::class.java) -> HistoryViewModel(repo)
                 modelClass.isAssignableFrom(MealViewModel::class.java) -> MealViewModel(store, draftStore)
-                modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(store, libraryCache)
+                modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(repo)
                 modelClass.isAssignableFrom(BulkAddViewModel::class.java) -> BulkAddViewModel(store)
                 else -> throw IllegalArgumentException("Unknown ViewModel $modelClass")
             } as T
