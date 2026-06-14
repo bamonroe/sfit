@@ -14,6 +14,7 @@ import net.bam.sfit.data.HistoryCacheStore
 import net.bam.sfit.data.SettingsStore
 import net.bam.sfit.data.SparkyApi
 import net.bam.sfit.data.UserPreferences
+import net.bam.sfit.data.displayToKg
 import net.bam.sfit.data.kgToDisplay
 import net.bam.sfit.data.maintenanceCalories
 import java.time.LocalDate
@@ -52,6 +53,26 @@ class HistoryViewModel(
         if (g == _state.value.granularity) return
         _state.update { it.copy(granularity = g, rows = emptyList()) }
         load()
+    }
+
+    /** Upsert today's body weight, entered in the current display unit. */
+    fun logWeight(displayValue: Double) {
+        viewModelScope.launch {
+            val settings = store.settings.first()
+            if (!settings.isConfigured) {
+                _state.update { it.copy(error = "Not configured") }
+                return@launch
+            }
+            _state.update { it.copy(loading = true, error = null) }
+            try {
+                val api = SparkyApi(settings.baseUrl, settings.apiKey)
+                val kg = displayToKg(displayValue, _state.value.unit)
+                api.logWeight(LocalDate.now().toString(), kg)
+                load() // refresh the table + cache
+            } catch (e: Exception) {
+                _state.update { it.copy(loading = false, error = e.message ?: "Failed to log weight") }
+            }
+        }
     }
 
     fun load() {

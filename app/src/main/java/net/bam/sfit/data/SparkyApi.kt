@@ -96,6 +96,10 @@ data class Report(
 fun kgToDisplay(kg: Double, weightUnit: String): Double =
     if (weightUnit.startsWith("lb", ignoreCase = true)) kg * 2.2046226218 else kg
 
+/** The user's display unit → kilograms (the canonical storage unit). */
+fun displayToKg(value: Double, weightUnit: String): Double =
+    if (weightUnit.startsWith("lb", ignoreCase = true)) value / 2.2046226218 else value
+
 // ---- Barcode lookup + meal creation ----
 
 @Serializable
@@ -180,6 +184,12 @@ private data class CreateMealRequest(
 
 @Serializable
 private data class CreatedMeal(val id: String = "")
+
+@Serializable
+private data class CheckInRequest(
+    @SerialName("entry_date") val entryDate: String,
+    val weight: Double,
+)
 
 @Serializable
 private data class LogFoodRequest(
@@ -386,6 +396,11 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
             "POST", "/food-entries",
             json.encodeToString(LogFoodRequest(foodId, variantId, grams, "g", mealType, date)),
         )
+    }
+
+    /** POST /measurements/check-in — upsert a day's body weight (kg). */
+    suspend fun logWeight(date: String, kg: Double) {
+        sendBody("POST", "/measurements/check-in", json.encodeToString(CheckInRequest(date, kg)))
     }
 
     /** GET /foods/{id} — full food incl. default_variant nutrition. */
