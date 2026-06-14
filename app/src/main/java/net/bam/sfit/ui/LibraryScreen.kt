@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
@@ -54,6 +56,7 @@ fun LibraryScreen(
     mealVm: MealViewModel,
     onBulkAdd: () -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
+    onEditMeal: (LibraryMeal) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val mealState by mealVm.state.collectAsStateWithLifecycle()
@@ -141,6 +144,7 @@ fun LibraryScreen(
         MealDetailSheet(
             meal = meal,
             onDismiss = vm::closeMealDetail,
+            onEdit = { onEditMeal(meal); vm.closeMealDetail() },
             onDelete = { vm.deleteMeal(meal.id) },
         )
     }
@@ -148,12 +152,20 @@ fun LibraryScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MealDetailSheet(meal: LibraryMeal, onDismiss: () -> Unit, onDelete: () -> Unit) {
+private fun MealDetailSheet(
+    meal: LibraryMeal,
+    onDismiss: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val sheetState = rememberModalBottomSheetState()
     var confirmDelete by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
+        ) {
             Text(meal.name.ifBlank { "(unnamed)" }, style = MaterialTheme.typography.headlineSmall)
             Text(
                 "${meal.totalCalories.roundToInt()} kcal  ·  ${meal.totalGrams.roundToInt()} g total",
@@ -187,10 +199,16 @@ private fun MealDetailSheet(meal: LibraryMeal, onDismiss: () -> Unit, onDelete: 
                 }
             }
 
-            OutlinedButton(
-                onClick = { confirmDelete = true },
+            Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
-            ) { Text("Delete meal", color = MaterialTheme.colorScheme.error) }
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("Edit") }
+                OutlinedButton(
+                    onClick = { confirmDelete = true },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            }
         }
     }
 

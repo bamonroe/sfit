@@ -209,6 +209,8 @@ data class FoodsPage(
 
 @Serializable
 data class MealFood(
+    @SerialName("food_id") val foodId: String = "",
+    @SerialName("variant_id") val variantId: String = "",
     @SerialName("food_name") val foodName: String? = null,
     val name: String? = null,
     val quantity: Double = 0.0,
@@ -444,6 +446,17 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
         )
         val created: CreatedMeal = json.decodeFromString(postBody("/meals", json.encodeToString(req)))
         return created.id
+    }
+
+    /** PUT /meals/{id} — replace a recipe's name and ingredients. */
+    suspend fun updateMeal(mealId: String, name: String, lines: List<MealLine>) {
+        val totalGrams = lines.sumOf { it.grams }.coerceAtLeast(1.0)
+        val req = CreateMealRequest(
+            name = name,
+            totalServings = totalGrams,
+            foods = lines.map { MealFoodReq(it.foodId, it.variantId, it.grams) },
+        )
+        sendBody("PUT", "/meals/$mealId", json.encodeToString(req))
     }
 
     private companion object {
