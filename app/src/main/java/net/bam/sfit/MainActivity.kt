@@ -48,6 +48,8 @@ import net.bam.sfit.ui.MainScreen
 import net.bam.sfit.ui.MainViewModel
 import net.bam.sfit.ui.MealScreen
 import net.bam.sfit.ui.MealViewModel
+import net.bam.sfit.ui.ProviderSearchScreen
+import net.bam.sfit.ui.ProviderSearchViewModel
 import net.bam.sfit.ui.ScannerScreen
 import net.bam.sfit.ui.SettingsScreen
 import net.bam.sfit.ui.theme.SFitTheme
@@ -64,7 +66,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal }
+private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal, ProviderSearch }
 
 @Composable
 private fun AppRoot(
@@ -85,6 +87,7 @@ private fun AppRoot(
                 modelClass.isAssignableFrom(MealViewModel::class.java) -> MealViewModel(store, draftStore)
                 modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(repo)
                 modelClass.isAssignableFrom(BulkAddViewModel::class.java) -> BulkAddViewModel(store)
+                modelClass.isAssignableFrom(ProviderSearchViewModel::class.java) -> ProviderSearchViewModel(repo)
                 else -> throw IllegalArgumentException("Unknown ViewModel $modelClass")
             } as T
         }
@@ -94,6 +97,7 @@ private fun AppRoot(
     val mealVm: MealViewModel = viewModel(factory = factory)
     val libraryVm: LibraryViewModel = viewModel(factory = factory)
     val bulkVm: BulkAddViewModel = viewModel(factory = factory)
+    val providerVm: ProviderSearchViewModel = viewModel(factory = factory)
 
     // System back mirrors the on-screen back arrows for the pushed screens.
     BackHandler(enabled = screen != Screen.Main) {
@@ -102,6 +106,7 @@ private fun AppRoot(
             Screen.BulkAdd -> { libraryVm.load(); screen = Screen.Main }
             Screen.EditFood -> { editFood = null; libraryVm.load(); screen = Screen.Main }
             Screen.EditMeal -> { editMeal = null; libraryVm.load(); screen = Screen.Main }
+            Screen.ProviderSearch -> screen = Screen.Main
             else -> screen = Screen.Main // Settings, Meal
         }
     }
@@ -115,6 +120,7 @@ private fun AppRoot(
             onOpenSettings = { screen = Screen.Settings },
             onOpenMeal = { screen = Screen.Meal },
             onBulkAdd = { bulkVm.reset(); screen = Screen.BulkAdd },
+            onProviderSearch = { screen = Screen.ProviderSearch },
             onEditFood = { food -> editFood = food; screen = Screen.EditFood },
             onEditMeal = { meal -> editMeal = meal; screen = Screen.EditMeal },
             onLogged = vm::refresh,
@@ -171,6 +177,10 @@ private fun AppRoot(
                 )
             }
         }
+        Screen.ProviderSearch -> ProviderSearchScreen(
+            providerVm,
+            onBack = { screen = Screen.Main },
+        )
     }
 }
 
@@ -184,6 +194,7 @@ private fun HomePager(
     onOpenSettings: () -> Unit,
     onOpenMeal: () -> Unit,
     onBulkAdd: () -> Unit,
+    onProviderSearch: () -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
     onEditMeal: (LibraryMeal) -> Unit,
     onLogged: () -> Unit,
@@ -202,6 +213,7 @@ private fun HomePager(
                     libraryVm,
                     mealVm = mealVm,
                     onBulkAdd = onBulkAdd,
+                    onProviderSearch = onProviderSearch,
                     onEditFood = onEditFood,
                     onEditMeal = onEditMeal,
                     onLogged = onLogged,

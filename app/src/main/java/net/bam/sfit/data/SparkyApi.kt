@@ -2,6 +2,7 @@ package net.bam.sfit.data
 
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -150,6 +151,30 @@ data class BarcodeResult(
     val source: String = "not_found",
     val food: BarcodeFood? = null,
 )
+
+// ---- Provider (Open Food Facts) text search ----
+
+@Serializable
+data class ProviderNutriments(
+    @SerialName("energy-kcal_100g") val energyKcal100g: Double = 0.0,
+)
+
+/** One Open Food Facts search hit. Carries a barcode [code], so importing
+ *  reuses the existing barcode → DB pipeline. */
+@Serializable
+data class ProviderFood(
+    @SerialName("product_name") val productName: String = "",
+    @SerialName("product_name_en") val productNameEn: String = "",
+    val brands: String? = null,
+    val code: String = "",
+    val nutriments: ProviderNutriments = ProviderNutriments(),
+) {
+    val name: String get() = productName.ifBlank { productNameEn }
+    val kcalPer100g: Double get() = nutriments.energyKcal100g
+}
+
+@Serializable
+private data class OffSearchResponse(val products: List<ProviderFood> = emptyList())
 
 /** POST /foods body — flat nutrition fields, mirroring the verified payload. */
 @Serializable
@@ -505,6 +530,24 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** GET /foods/barcode/{barcode} — local DB first, then OpenFoodFacts fallback. */
     suspend fun barcodeLookup(barcode: String): BarcodeResult =
         decode(getBody("/foods/barcode/$barcode"), BarcodeResult())
+
+    /** GET /foods/openfoodfacts/search — text search the Open Food Facts provider.
+     *  OFF intermittently returns an HTML error page (the server wraps it as 500),
+     *  so retry a couple of times before giving up. */
+    suspend fun searchOpenFoodFacts(query: String, page: Int = 1): List<ProviderFood> {
+        val q = java.net.URLEncoder.encode(query, "UTF-8")
+        var last: Exception? = null
+        repeat(3) {
+            try {
+                return decode(getBody("/foods/openfoodfacts/search?query=$q&page=$page"), OffSearchResponse())
+                    .products.filter { it.code.isNotBlank() && it.name.isNotBlank() }
+            } catch (e: Exception) {
+                last = e
+                delay(600)
+            }
+        }
+        throw last ?: IllegalStateException("Search failed")
+    }
 
     /** POST /foods — import a (provider) food into the DB; returns id + variant id. */
     private suspend fun importFood(f: BarcodeFood): SavedFood {
