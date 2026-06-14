@@ -67,6 +67,21 @@ data class CheckIn(
     val weight: Double? = null,
 )
 
+@Serializable
+data class UserPreferences(
+    @SerialName("activity_level") val activityLevel: String = "not_much",
+    @SerialName("default_weight_unit") val weightUnit: String = "kg",
+)
+
+// Mirrors SparkyFitness ACTIVITY_MULTIPLIERS (Frontend calorieCalculations.ts).
+private val ACTIVITY_MULTIPLIERS = mapOf(
+    "not_much" to 1.2, "light" to 1.375, "moderate" to 1.55, "heavy" to 1.725,
+)
+
+/** Maintenance (TDEE) = BMR × activity multiplier, matching the server. */
+fun maintenanceCalories(bmr: Double, activityLevel: String): Double =
+    bmr * (ACTIVITY_MULTIPLIERS[activityLevel] ?: 1.2)
+
 /** Thin client for the SparkyFitness REST API (auth: Bearer api key). */
 class SparkyApi(baseUrl: String, private val apiKey: String) {
     // The SparkyFitness REST API always lives under /api; tolerate a base URL
@@ -116,6 +131,10 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** GET /measurements/check-in-measurements-range/{start}/{end} */
     suspend fun checkInRange(start: String, end: String): List<CheckIn> =
         decode(getBody("/measurements/check-in-measurements-range/$start/$end"), emptyList())
+
+    /** GET /user-preferences (activity level, units, …) */
+    suspend fun userPreferences(): UserPreferences =
+        decode(getBody("/user-preferences"), UserPreferences())
 
     private companion object {
         const val TAG = "SFit"

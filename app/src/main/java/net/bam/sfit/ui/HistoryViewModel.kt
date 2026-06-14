@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.bam.sfit.data.SettingsStore
 import net.bam.sfit.data.SparkyApi
+import net.bam.sfit.data.UserPreferences
+import net.bam.sfit.data.maintenanceCalories
 import java.time.LocalDate
 
 enum class RangePreset { Week, Month, Custom }
@@ -69,17 +71,24 @@ class HistoryViewModel(private val store: SettingsStore) : ViewModel() {
             _state.update { it.copy(loading = true, error = null) }
             try {
                 val api = SparkyApi(settings.baseUrl, settings.apiKey)
+                // Activity level drives maintenance (TDEE = BMR × multiplier).
+                val prefs = runCatching { api.userPreferences() }.getOrDefault(UserPreferences())
                 val checkins = api.checkInRange(s.start.toString(), s.end.toString())
                     .filter { it.weight != null }
                 // Fetch each weighed day's deficit concurrently (the set is sparse).
                 val rows = coroutineScope {
                     checkins.map { ci ->
                         async {
-                            // A day with no food logged (eaten == 0) yields a bogus
-                            // "deficit" equal to full BMR — treat it as unavailable.
+                            // Deficit = maintenance − eaten. A day with no food logged
+                            // (eaten == 0) has no meaningful deficit — show it blank.
                             val deficit = runCatching {
                                 val cb = api.dailySummary(ci.date).calorieBalance
-                                if (cb.eaten > 0) cb.deficit else null
+                                if (cb.eaten > 0) {
+                                    // expenditure = maintenance (BMR×activity) + logged exercise
+                                    maintenanceCalories(cb.bmr, prefs.activityLevel) + cb.burned - cb.eaten
+                                } else {
+                                    null
+                                }
                             }.getOrNull()
                             HistoryRow(ci.date, ci.weight, deficit)
                         }
