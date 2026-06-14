@@ -34,6 +34,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import net.bam.sfit.data.BarcodeFood
 import net.bam.sfit.data.DraftStore
+import net.bam.sfit.data.LibraryCacheStore
 import net.bam.sfit.data.LibraryMeal
 import net.bam.sfit.data.SettingsStore
 import net.bam.sfit.ui.BulkAddViewModel
@@ -57,8 +58,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val store = SettingsStore(applicationContext)
         val draftStore = DraftStore(applicationContext)
+        val libraryCache = LibraryCacheStore(applicationContext)
         setContent {
-            SFitTheme { AppRoot(store, draftStore) }
+            SFitTheme { AppRoot(store, draftStore, libraryCache) }
         }
     }
 }
@@ -66,19 +68,19 @@ class MainActivity : ComponentActivity() {
 private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal }
 
 @Composable
-private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
+private fun AppRoot(store: SettingsStore, draftStore: DraftStore, libraryCache: LibraryCacheStore) {
     var screen by remember { mutableStateOf(Screen.Main) }
     var editFood by remember { mutableStateOf<BarcodeFood?>(null) }
     var editMeal by remember { mutableStateOf<LibraryMeal?>(null) }
 
-    val factory = remember(store, draftStore) {
+    val factory = remember(store, draftStore, libraryCache) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
                 modelClass.isAssignableFrom(MainViewModel::class.java) -> MainViewModel(store)
                 modelClass.isAssignableFrom(HistoryViewModel::class.java) -> HistoryViewModel(store)
                 modelClass.isAssignableFrom(MealViewModel::class.java) -> MealViewModel(store, draftStore)
-                modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(store)
+                modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(store, libraryCache)
                 modelClass.isAssignableFrom(BulkAddViewModel::class.java) -> BulkAddViewModel(store)
                 else -> throw IllegalArgumentException("Unknown ViewModel $modelClass")
             } as T

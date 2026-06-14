@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
@@ -84,6 +85,14 @@ fun LibraryScreen(
             TopAppBar(
                 title = { Text("Library") },
                 actions = {
+                    IconButton(onClick = {
+                        vm.setSortMode(
+                            if (state.sortMode == SortMode.Frequency) SortMode.Alphabetical
+                            else SortMode.Frequency,
+                        )
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Toggle sort")
+                    }
                     IconButton(onClick = onBulkAdd) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = "Bulk add foods")
                     }
@@ -113,7 +122,12 @@ fun LibraryScreen(
                             MealRow(meal, onClick = { vm.openMeal(meal) })
                         }
 
-                        item { SectionHeader("Foods", state.totalFoods) }
+                        item {
+                            SectionHeader(
+                                "Foods", state.totalFoods,
+                                if (state.sortMode == SortMode.Frequency) "by frequency" else "A–Z",
+                            )
+                        }
                         if (state.foods.isEmpty() && !state.loading) item { EmptyRow("No foods yet") }
                         items(state.foods, key = { "f" + it.id }) { food ->
                             FoodRow(food, onClick = { vm.openFood(food.id) })
@@ -407,9 +421,9 @@ private fun Macro(label: String, grams: Double, modifier: Modifier = Modifier) {
 private fun fmt(d: Double): String = if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
 
 @Composable
-private fun SectionHeader(label: String, count: Int) {
+private fun SectionHeader(label: String, count: Int, suffix: String? = null) {
     Text(
-        text = "$label · $count",
+        text = "$label · $count" + (suffix?.let { "  ·  $it" } ?: ""),
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.primary,

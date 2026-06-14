@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.bam.sfit.data.BarcodeFood
+import net.bam.sfit.data.CachedFood
+import net.bam.sfit.data.CachedLibrary
+import net.bam.sfit.data.LibraryCacheStore
 import net.bam.sfit.data.LibraryFood
 import net.bam.sfit.data.LibraryMeal
 import net.bam.sfit.data.SettingsStore
@@ -20,15 +23,19 @@ import java.time.LocalDate
 
 private const val USAGE_WINDOW_DAYS = 28
 
+enum class SortMode { Frequency, Alphabetical }
+
 /** How often (count) and how recently (lastDate, ISO) a food was logged. */
 private data class Usage(val count: Int, val lastDate: String)
 private class UsageAcc { var count = 0; var lastDate = "" }
+private data class FoodUsage(val food: LibraryFood, val usage: Usage)
 
 data class LibraryState(
     val loading: Boolean = false,
     val foods: List<LibraryFood> = emptyList(),
     val totalFoods: Int = 0,
     val meals: List<LibraryMeal> = emptyList(),
+    val sortMode: SortMode = SortMode.Frequency,
     val error: String? = null,
     val detail: BarcodeFood? = null,     // food detail shown in the sheet
     val detailLoading: Boolean = false,
@@ -36,19 +43,62 @@ data class LibraryState(
     val message: String? = null,
 )
 
-class LibraryViewModel(private val store: SettingsStore) : ViewModel() {
+class LibraryViewModel(
+    private val store: SettingsStore,
+    private val cache: LibraryCacheStore,
+) : ViewModel() {
     private val _state = MutableStateFlow(LibraryState())
     val state: StateFlow<LibraryState> = _state.asStateFlow()
+
+    // Foods with their usage, held in memory so re-sorting needs no network.
+    private var loaded: List<FoodUsage> = emptyList()
 
     init {
         load()
     }
 
+    /** Switch sort order using already-loaded data — no server call. */
+    fun setSortMode(mode: SortMode) {
+        _state.update { it.copy(sortMode = mode, foods = sortFoods(loaded, mode)) }
+    }
+
+    private fun sortFoods(items: List<FoodUsage>, mode: SortMode): List<LibraryFood> = when (mode) {
+        SortMode.Alphabetical -> items.sortedBy { it.food.name.lowercase() }.map { it.food }
+        SortMode.Frequency -> items.sortedWith(
+            compareByDescending<FoodUsage> { it.usage.count }
+                .thenByDescending { it.usage.lastDate }
+                .thenBy { it.food.name.lowercase() },
+        ).map { it.food }
+    }
+
+    private fun apply(items: List<FoodUsage>, meals: List<LibraryMeal>, total: Int, loading: Boolean) {
+        loaded = items
+        _state.update {
+            it.copy(
+                loading = loading,
+                foods = sortFoods(items, it.sortMode),
+                meals = meals,
+                totalFoods = total,
+                error = null,
+            )
+        }
+    }
+
     fun load() {
         viewModelScope.launch {
+            // 1) Render cached data instantly (list + re-sort work without waiting).
+            cache.load()?.let { c ->
+                val items = c.foods.map {
+                    FoodUsage(LibraryFood(it.id, it.name, it.brand), Usage(it.count, it.lastDate))
+                }
+                apply(items, c.meals, c.totalFoods, loading = true)
+            }
+
             val s = store.settings.first()
             if (!s.isConfigured) {
-                _state.update { it.copy(error = "Not configured") }
+                _state.update {
+                    it.copy(loading = false, error = if (loaded.isEmpty()) "Not configured" else null)
+                }
                 return@launch
             }
             _state.update { it.copy(loading = true, error = null) }
@@ -61,21 +111,22 @@ class LibraryViewModel(private val store: SettingsStore) : ViewModel() {
                     val page = pageD.await()
                     val meals = mealsD.await().sortedBy { it.name.lowercase() }
                     val usage = usageD.await()
-                    // Most-logged foods first; ties broken by most recent log; then name.
-                    val foods = page.foods.sortedWith(
-                        compareByDescending<LibraryFood> { usage[it.id]?.count ?: 0 }
-                            .thenByDescending { usage[it.id]?.lastDate ?: "" }
-                            .thenBy { it.name.lowercase() },
+                    val items = page.foods.map { FoodUsage(it, usage[it.id] ?: Usage(0, "")) }
+                    apply(items, meals, page.totalCount, loading = false)
+                    cache.save(
+                        CachedLibrary(
+                            foods = items.map {
+                                CachedFood(it.food.id, it.food.name, it.food.brand, it.usage.count, it.usage.lastDate)
+                            },
+                            meals = meals,
+                            totalFoods = page.totalCount,
+                        ),
                     )
-                    _state.update {
-                        it.copy(
-                            loading = false, foods = foods, totalFoods = page.totalCount,
-                            meals = meals, error = null,
-                        )
-                    }
                 }
             } catch (e: Exception) {
-                _state.update { it.copy(loading = false, error = e.message ?: "Failed to load") }
+                _state.update {
+                    it.copy(loading = false, error = if (loaded.isEmpty()) (e.message ?: "Failed to load") else null)
+                }
             }
         }
     }
