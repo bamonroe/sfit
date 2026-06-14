@@ -27,6 +27,7 @@ data class FoodEntry(
     val quantity: Double = 0.0,
     val unit: String = "g",
     @SerialName("serving_size") val servingSize: Double = 0.0,
+    @SerialName("serving_unit") val servingUnit: String = "",
     @SerialName("meal_type") val mealType: String? = null,
     @SerialName("food_name") val foodName: String? = null,
     @SerialName("brand_name") val brandName: String? = null,
@@ -36,6 +37,11 @@ data class FoodEntry(
     @SerialName("entry_date") val entryDate: String = "",
 ) {
     val consumedCalories: Double get() = if (servingSize > 0) calories * quantity / servingSize else 0.0
+
+    /** The unit the quantity is actually in. SparkyFitness defaults [unit] to
+     *  "g" even for foods served in other units (e.g. "fl oz"), while the real
+     *  unit lives in [servingUnit] (which serving_size is measured in). */
+    val displayUnit: String get() = servingUnit.ifBlank { unit }
 }
 
 @Serializable

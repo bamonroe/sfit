@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -96,9 +95,6 @@ fun MainScreen(
                 actions = {
                     IconButton(onClick = onOpenMeal) {
                         Icon(Icons.Default.Restaurant, contentDescription = "New meal")
-                    }
-                    IconButton(onClick = { vm.refresh() }, enabled = state.configured) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -214,7 +210,7 @@ private fun EntryRow(e: FoodEntry, onClick: () -> Unit) {
                 buildString {
                     val q = e.quantity
                     append(if (q == q.toLong().toDouble()) q.toLong().toString() else "%.1f".format(q))
-                    append(" ").append(e.unit)
+                    append(" ").append(e.displayUnit)
                     e.brandName?.let { append("  ·  ").append(it) }
                 },
                 style = MaterialTheme.typography.bodySmall,
@@ -259,7 +255,7 @@ private fun buildDiaryRows(entries: List<FoodEntry>, mealNames: Map<String, Stri
 private fun qtyLabel(e: FoodEntry): String {
     val q = e.quantity
     val num = if (q == q.toLong().toDouble()) q.toLong().toString() else "%.1f".format(q)
-    return "$num ${e.unit}"
+    return "$num ${e.displayUnit}"
 }
 
 @Composable
@@ -369,7 +365,7 @@ private fun EntryEditSheet(
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
-                label = { Text("Quantity (${entry.unit})") },
+                label = { Text("Quantity (${entry.displayUnit})") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),

@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -97,9 +96,6 @@ fun LibraryScreen(
                     }
                     IconButton(onClick = onBulkAdd) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = "Bulk add foods")
-                    }
-                    IconButton(onClick = vm::load) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                 },
             )
