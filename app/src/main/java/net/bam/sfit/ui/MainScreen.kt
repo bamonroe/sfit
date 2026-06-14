@@ -4,6 +4,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -67,6 +70,7 @@ fun MainScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<FoodEntry?>(null) }
+    var viewingMeal by remember { mutableStateOf<DiaryMeal?>(null) }
 
     editing?.let { entry ->
         EntryEditSheet(
@@ -74,6 +78,14 @@ fun MainScreen(
             onSave = { qty -> vm.editEntry(entry, qty); editing = null },
             onDelete = { vm.deleteEntry(entry); editing = null },
             onDismiss = { editing = null },
+        )
+    }
+
+    viewingMeal?.let { meal ->
+        MealEntrySheet(
+            meal = meal,
+            onDelete = { vm.deleteLoggedMeal(meal.femId); viewingMeal = null },
+            onDismiss = { viewingMeal = null },
         )
     }
 
@@ -100,7 +112,13 @@ fun MainScreen(
             !state.configured -> Centered(padding) { UnconfiguredMessage(onOpenSettings) }
             !hasData && state.loading -> Centered(padding) { CircularProgressIndicator() }
             !hasData && state.error != null -> Centered(padding) { ErrorMessage(state.error!!) { vm.refresh() } }
-            else -> TodayContent(state, onRefresh = vm::refresh, onEntryClick = { editing = it }, Modifier.fillMaxSize().padding(padding))
+            else -> TodayContent(
+                state,
+                onRefresh = vm::refresh,
+                onEntryClick = { editing = it },
+                onMealClick = { viewingMeal = it },
+                Modifier.fillMaxSize().padding(padding),
+            )
         }
     }
 }
@@ -121,6 +139,7 @@ private fun TodayContent(
     state: DayState,
     onRefresh: () -> Unit,
     onEntryClick: (FoodEntry) -> Unit,
+    onMealClick: (DiaryMeal) -> Unit,
     modifier: Modifier,
 ) {
     PullToRefreshBox(isRefreshing = state.loading, onRefresh = onRefresh, modifier = modifier) {
@@ -147,7 +166,13 @@ private fun TodayContent(
             keys.forEach { meal ->
                 val list = byMeal.getValue(meal)
                 item { MealHeader(meal, list.sumOf { it.consumedCalories }) }
-                items(list) { EntryRow(it, onClick = { onEntryClick(it) }) }
+                // Collapse grouped meal ingredients into one row; foods stay individual.
+                items(buildDiaryRows(list, state.mealNames)) { row ->
+                    when (row) {
+                        is DiaryRow.Food -> EntryRow(row.entry, onClick = { onEntryClick(row.entry) })
+                        is DiaryRow.Meal -> MealRow(row.meal, onClick = { onMealClick(row.meal) })
+                    }
+                }
             }
         }
         }
@@ -201,6 +226,117 @@ private fun EntryRow(e: FoodEntry, onClick: () -> Unit) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/** A logged meal (recipe) collapsed into a single diary row. */
+data class DiaryMeal(val femId: String, val name: String, val entries: List<FoodEntry>) {
+    val totalCalories: Double get() = entries.sumOf { it.consumedCalories }
+}
+
+private sealed interface DiaryRow {
+    data class Food(val entry: FoodEntry) : DiaryRow
+    data class Meal(val meal: DiaryMeal) : DiaryRow
+}
+
+/** Collapse entries that share a food_entry_meal_id into one meal row, keeping
+ *  standalone foods individual and preserving diary order. */
+private fun buildDiaryRows(entries: List<FoodEntry>, mealNames: Map<String, String>): List<DiaryRow> {
+    val rows = mutableListOf<DiaryRow>()
+    val seen = HashSet<String>()
+    for (e in entries) {
+        val fem = e.foodEntryMealId
+        if (fem.isNullOrBlank()) {
+            rows.add(DiaryRow.Food(e))
+        } else if (seen.add(fem)) {
+            val group = entries.filter { it.foodEntryMealId == fem }
+            rows.add(DiaryRow.Meal(DiaryMeal(fem, mealNames[fem] ?: "Meal", group)))
+        }
+    }
+    return rows
+}
+
+private fun qtyLabel(e: FoodEntry): String {
+    val q = e.quantity
+    val num = if (q == q.toLong().toDouble()) q.toLong().toString() else "%.1f".format(q)
+    return "$num ${e.unit}"
+}
+
+@Composable
+private fun MealRow(meal: DiaryMeal, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.Restaurant,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(meal.name, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "${meal.entries.size} ingredients",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Text(
+            "${meal.totalCalories.roundToInt()} kcal",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MealEntrySheet(meal: DiaryMeal, onDelete: () -> Unit, onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp).padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(meal.name, style = MaterialTheme.typography.titleLarge)
+            Text(
+                "${meal.totalCalories.roundToInt()} kcal  ·  ${meal.entries.size} ingredients",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(4.dp))
+            meal.entries.forEach { e ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(e.foodName ?: "(unnamed)", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            qtyLabel(e),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        "${e.consumedCalories.roundToInt()} kcal",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
+                Text("Delete meal")
+            }
+        }
     }
 }
 

@@ -32,6 +32,7 @@ data class FoodEntry(
     @SerialName("brand_name") val brandName: String? = null,
     @SerialName("food_id") val foodId: String = "",
     @SerialName("variant_id") val variantId: String = "",
+    @SerialName("food_entry_meal_id") val foodEntryMealId: String? = null,
     @SerialName("entry_date") val entryDate: String = "",
 ) {
     val consumedCalories: Double get() = if (servingSize > 0) calories * quantity / servingSize else 0.0
@@ -68,6 +69,14 @@ data class DailySummary(
     val consumedCalories: Double get() = foodEntries.sumOf { it.consumedCalories }
     val remainingCalories: Double get() = goals.calories - consumedCalories
 }
+
+/** A meal logged to the diary — groups several food entries under one name. */
+@Serializable
+data class FoodEntryMeal(
+    val id: String = "",
+    val name: String = "",
+    @SerialName("meal_type") val mealType: String? = null,
+)
 
 /** A check-in measurement row (we only need date + weight). */
 @Serializable
@@ -394,6 +403,15 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** GET /foods/food-entries/{date} — diary entries logged on a day. */
     suspend fun foodEntriesForDate(date: String): List<FoodEntry> =
         decode(getBody("/foods/food-entries/$date"), emptyList())
+
+    /** GET /food-entry-meals/by-date/{date} — meals logged to the diary that day. */
+    suspend fun foodEntryMealsForDate(date: String): List<FoodEntryMeal> =
+        decode(getBody("/food-entry-meals/by-date/$date"), emptyList())
+
+    /** DELETE /food-entry-meals/{id} — remove a logged meal (and its entries). */
+    suspend fun deleteFoodEntryMeal(id: String) {
+        sendBody("DELETE", "/food-entry-meals/$id", null)
+    }
 
     /** POST /food-entries — log a food to the diary. */
     suspend fun logFood(

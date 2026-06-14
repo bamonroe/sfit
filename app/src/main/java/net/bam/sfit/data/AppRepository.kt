@@ -40,6 +40,9 @@ data class DayData(
     val goalCalories: Double = 0.0,
     val consumedCalories: Double = 0.0,
     val entries: List<FoodEntry> = emptyList(),
+    // food_entry_meal_id -> logged-meal name (e.g. "Bam salsa"), so grouped
+    // ingredients collapse into one diary row.
+    val mealNames: Map<String, String> = emptyMap(),
 )
 
 /** Weight/deficit history, pre-computed for every granularity from one fetch. */
@@ -90,7 +93,7 @@ class AppRepository(
         // Render cached data instantly so every screen has something on launch.
         scope.launch {
             dayCache.load()?.takeIf { it.date == LocalDate.now().toString() }?.let { c ->
-                _day.value = DayData(c.goalCalories, c.consumedCalories, c.entries)
+                _day.value = DayData(c.goalCalories, c.consumedCalories, c.entries, c.mealNames)
             }
             historyCache.load()?.let { c ->
                 _history.value = HistoryData(
@@ -143,6 +146,9 @@ class AppRepository(
                     val foodsD = async { api.foods(perPage = 500) }
                     val mealsD = async { api.meals() }
                     val usageD = async { computeUsage(api) }
+                    val loggedMealsD = async {
+                        runCatching { api.foodEntryMealsForDate(today.toString()) }.getOrDefault(emptyList())
+                    }
 
                     val summary = summaryD.await()
                     val prefs = prefsD.await()
@@ -152,9 +158,12 @@ class AppRepository(
                     val foodsPage = foodsD.await()
                     val meals = mealsD.await().sortedBy { it.name.lowercase() }
                     val usage = usageD.await()
+                    val mealNames = loggedMealsD.await().associate { it.id to it.name }
 
                     // --- Today ---
-                    _day.value = DayData(summary.goals.calories, summary.consumedCalories, summary.foodEntries)
+                    _day.value = DayData(
+                        summary.goals.calories, summary.consumedCalories, summary.foodEntries, mealNames,
+                    )
 
                     // --- History (compute every granularity from one fetch) ---
                     weightUnit = prefs.weightUnit
@@ -170,7 +179,10 @@ class AppRepository(
 
                     // --- Persist all caches ---
                     dayCache.save(
-                        CachedDay(today.toString(), summary.goals.calories, summary.consumedCalories, summary.foodEntries),
+                        CachedDay(
+                            today.toString(), summary.goals.calories, summary.consumedCalories,
+                            summary.foodEntries, mealNames,
+                        ),
                     )
                     historyCache.save(
                         CachedHistory(
@@ -246,6 +258,27 @@ class AppRepository(
             if (!s.isConfigured) return@launch
             try {
                 SparkyApi(s.baseUrl, s.apiKey).deleteFoodEntry(entry.id)
+            } catch (e: Exception) {
+                onError(e.message ?: "Delete failed")
+            }
+            refresh() // reconcile with the server (success or revert)
+        }
+    }
+
+    /** Delete a whole logged meal (its grouped entries). Removes them from Today
+     *  locally at once, then confirms against the server. */
+    fun deleteLoggedMeal(foodEntryMealId: String, onError: (String) -> Unit = {}) {
+        val remaining = day.value.entries.filterNot { it.foodEntryMealId == foodEntryMealId }
+        _day.value = _day.value.copy(
+            entries = remaining,
+            consumedCalories = remaining.sumOf { it.consumedCalories },
+            mealNames = day.value.mealNames - foodEntryMealId,
+        )
+        scope.launch {
+            val s = store.settings.first()
+            if (!s.isConfigured) return@launch
+            try {
+                SparkyApi(s.baseUrl, s.apiKey).deleteFoodEntryMeal(foodEntryMealId)
             } catch (e: Exception) {
                 onError(e.message ?: "Delete failed")
             }

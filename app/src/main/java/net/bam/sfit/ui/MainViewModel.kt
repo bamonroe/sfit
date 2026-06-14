@@ -16,6 +16,7 @@ data class DayState(
     val goalCalories: Double = 0.0,
     val consumedCalories: Double = 0.0,
     val entries: List<FoodEntry> = emptyList(),
+    val mealNames: Map<String, String> = emptyMap(),
     val error: String? = null,
 ) {
     val remaining: Double get() = goalCalories - consumedCalories
@@ -31,6 +32,7 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
                 goalCalories = day.goalCalories,
                 consumedCalories = day.consumedCalories,
                 entries = day.entries,
+                mealNames = day.mealNames,
                 error = error,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayState())
@@ -40,4 +42,6 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
     fun editEntry(entry: FoodEntry, newQuantity: Double) = repo.updateEntry(entry, newQuantity)
 
     fun deleteEntry(entry: FoodEntry) = repo.deleteEntry(entry)
+
+    fun deleteLoggedMeal(foodEntryMealId: String) = repo.deleteLoggedMeal(foodEntryMealId)
 }
