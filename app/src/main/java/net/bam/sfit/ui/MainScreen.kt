@@ -82,6 +82,7 @@ fun MainScreen(
     viewingMeal?.let { meal ->
         MealEntrySheet(
             meal = meal,
+            onSave = { grams -> vm.editLoggedMeal(meal.femId, meal.name, meal.entries, grams); viewingMeal = null },
             onDelete = { vm.deleteLoggedMeal(meal.femId); viewingMeal = null },
             onDismiss = { viewingMeal = null },
         )
@@ -289,8 +290,22 @@ private fun MealRow(meal: DiaryMeal, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MealEntrySheet(meal: DiaryMeal, onDelete: () -> Unit, onDismiss: () -> Unit) {
+private fun MealEntrySheet(
+    meal: DiaryMeal,
+    onSave: (Double) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val sheetState = rememberModalBottomSheetState()
+    val currentTotal = meal.entries.sumOf { it.quantity }
+    var text by remember {
+        mutableStateOf(if (currentTotal == currentTotal.toLong().toDouble()) currentTotal.toLong().toString() else "%.1f".format(currentTotal))
+    }
+    val grams = text.trim().toDoubleOrNull()
+    val valid = grams != null && grams > 0
+    val scale = if (currentTotal > 0 && grams != null) grams / currentTotal else 1.0
+    val kcal = meal.totalCalories * scale
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
@@ -298,8 +313,16 @@ private fun MealEntrySheet(meal: DiaryMeal, onDelete: () -> Unit, onDismiss: () 
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(meal.name, style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Quantity (g)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth(),
+            )
             Text(
-                "${meal.totalCalories.roundToInt()} kcal  ·  ${meal.entries.size} ingredients",
+                "${kcal.roundToInt()} kcal  ·  ${meal.entries.size} ingredients",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -325,8 +348,14 @@ private fun MealEntrySheet(meal: DiaryMeal, onDelete: () -> Unit, onDismiss: () 
                 }
             }
             Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = onDelete, modifier = Modifier.fillMaxWidth()) {
-                Text("Delete meal")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedButton(onClick = onDelete, modifier = Modifier.weight(1f)) { Text("Delete") }
+                Button(onClick = { grams?.let(onSave) }, enabled = valid, modifier = Modifier.weight(1f)) {
+                    Text("Save")
+                }
             }
         }
     }

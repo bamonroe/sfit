@@ -276,6 +276,36 @@ class AppRepository(
         }
     }
 
+    /** Change a logged meal's total quantity (ingredients scale). Updates Today
+     *  locally at once, then confirms against the server. */
+    fun updateLoggedMeal(
+        femId: String,
+        name: String,
+        entries: List<FoodEntry>,
+        newGrams: Double,
+        onError: (String) -> Unit = {},
+    ) {
+        val mealType = entries.firstOrNull()?.mealType ?: "snacks"
+        val date = entries.firstOrNull()?.entryDate?.ifBlank { null } ?: LocalDate.now().toString()
+        val currentTotal = entries.sumOf { it.quantity }.coerceAtLeast(1.0)
+        val scale = newGrams / currentTotal
+        // Optimistic: scale this meal's entries in place.
+        val updated = day.value.entries.map {
+            if (it.foodEntryMealId == femId) it.copy(quantity = it.quantity * scale) else it
+        }
+        _day.value = _day.value.copy(entries = updated, consumedCalories = updated.sumOf { it.consumedCalories })
+        scope.launch {
+            val s = store.settings.first()
+            if (!s.isConfigured) return@launch
+            try {
+                SparkyApi(s.baseUrl, s.apiKey).updateLoggedMeal(femId, name, mealType, date, newGrams, entries)
+            } catch (e: Exception) {
+                onError(e.message ?: "Update failed")
+            }
+            refresh()
+        }
+    }
+
     /** Delete a whole logged meal (its grouped entries). Removes them from Today
      *  locally at once, then confirms against the server. */
     fun deleteLoggedMeal(foodEntryMealId: String, onError: (String) -> Unit = {}) {

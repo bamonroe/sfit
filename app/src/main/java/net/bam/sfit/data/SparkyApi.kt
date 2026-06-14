@@ -244,6 +244,16 @@ private data class LogMealRequest(
 )
 
 @Serializable
+private data class UpdateLoggedMealRequest(
+    val name: String,
+    @SerialName("meal_type") val mealType: String,
+    @SerialName("entry_date") val entryDate: String,
+    val quantity: Double,
+    val unit: String = "g",
+    val foods: List<LogMealFoodReq>,
+)
+
+@Serializable
 private data class CheckInRequest(
     @SerialName("entry_date") val entryDate: String,
     val weight: Double,
@@ -471,6 +481,27 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
         sendBody(
             "POST", "/food-entry-meals",
             json.encodeToString(LogMealRequest(meal.id, mealType, date, meal.name, grams, "g", foods)),
+        )
+    }
+
+    /** PUT /food-entry-meals/{id} — change a logged meal's total quantity; the
+     *  ingredients (re-created server-side, hence the full body) scale with it. */
+    suspend fun updateLoggedMeal(
+        id: String,
+        name: String,
+        mealType: String,
+        date: String,
+        newGrams: Double,
+        entries: List<FoodEntry>,
+    ) {
+        val currentTotal = entries.sumOf { it.quantity }.coerceAtLeast(1.0)
+        val scale = newGrams / currentTotal
+        val foods = entries.map {
+            LogMealFoodReq(it.foodId, it.variantId, it.quantity * scale, it.unit.ifBlank { "g" })
+        }
+        sendBody(
+            "PUT", "/food-entry-meals/$id",
+            json.encodeToString(UpdateLoggedMealRequest(name, mealType, date, newGrams, "g", foods)),
         )
     }
 

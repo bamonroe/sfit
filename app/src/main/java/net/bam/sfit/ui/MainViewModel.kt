@@ -44,4 +44,7 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
     fun deleteEntry(entry: FoodEntry) = repo.deleteEntry(entry)
 
     fun deleteLoggedMeal(foodEntryMealId: String) = repo.deleteLoggedMeal(foodEntryMealId)
+
+    fun editLoggedMeal(femId: String, name: String, entries: List<FoodEntry>, newGrams: Double) =
+        repo.updateLoggedMeal(femId, name, entries, newGrams)
 }
