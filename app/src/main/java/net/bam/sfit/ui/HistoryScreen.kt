@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,20 +61,10 @@ private val lossGreen = Color(0xFF2ECC71)
 @Composable
 fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
     val state by vm.state.collectAsStateWithLifecycle()
-    var showLogWeight by remember { mutableStateOf(false) }
     // Reset expansion when the granularity changes.
     var expanded by remember(state.granularity) { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<HistoryRow?>(null) }
     var confirmDelete by remember { mutableStateOf<HistoryRow?>(null) }
-
-    if (showLogWeight) {
-        LogWeightDialog(
-            unit = state.unit,
-            initial = state.rows.firstOrNull { it.weight != null }?.weight,
-            onConfirm = { vm.logWeight(it); showLogWeight = false },
-            onDismiss = { showLogWeight = false },
-        )
-    }
 
     editing?.let { row ->
         LogWeightDialog(
@@ -118,11 +107,6 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
                         IconButton(onClick = onBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showLogWeight = true }) {
-                        Icon(Icons.Default.MonitorWeight, contentDescription = "Log weight")
                     }
                 },
             )
@@ -284,7 +268,7 @@ private fun DetailLine(label: String, value: String) {
 }
 
 @Composable
-private fun LogWeightDialog(
+internal fun LogWeightDialog(
     unit: String,
     initial: Double?,
     onConfirm: (Double) -> Unit,

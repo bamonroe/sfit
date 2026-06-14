@@ -65,7 +65,6 @@ import kotlin.math.roundToInt
 fun MainScreen(
     vm: MainViewModel,
     onOpenSettings: () -> Unit,
-    onOpenMeal: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<FoodEntry?>(null) }
@@ -93,9 +92,6 @@ fun MainScreen(
             TopAppBar(
                 title = { Text("Today") },
                 actions = {
-                    IconButton(onClick = onOpenMeal) {
-                        Icon(Icons.Default.Restaurant, contentDescription = "New meal")
-                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }

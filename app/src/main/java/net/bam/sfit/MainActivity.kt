@@ -6,17 +6,34 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.MonitorWeight
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Restaurant
+import androidx.compose.material.icons.filled.RestaurantMenu
+import androidx.compose.material.icons.filled.TravelExplore
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +61,8 @@ import net.bam.sfit.ui.HistoryScreen
 import net.bam.sfit.ui.HistoryViewModel
 import net.bam.sfit.ui.LibraryScreen
 import net.bam.sfit.ui.LibraryViewModel
+import net.bam.sfit.ui.LogFoodScreen
+import net.bam.sfit.ui.LogWeightDialog
 import net.bam.sfit.ui.MainScreen
 import net.bam.sfit.ui.MainViewModel
 import net.bam.sfit.ui.MealScreen
@@ -66,7 +85,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal, ProviderSearch }
+private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal, ProviderSearch, LogFood }
 
 @Composable
 private fun AppRoot(
@@ -106,7 +125,7 @@ private fun AppRoot(
             Screen.BulkAdd -> { libraryVm.load(); screen = Screen.Main }
             Screen.EditFood -> { editFood = null; libraryVm.load(); screen = Screen.Main }
             Screen.EditMeal -> { editMeal = null; libraryVm.load(); screen = Screen.Main }
-            Screen.ProviderSearch -> screen = Screen.Main
+            Screen.ProviderSearch, Screen.LogFood -> screen = Screen.Main
             else -> screen = Screen.Main // Settings, Meal
         }
     }
@@ -121,6 +140,7 @@ private fun AppRoot(
             onOpenMeal = { screen = Screen.Meal },
             onBulkAdd = { bulkVm.reset(); screen = Screen.BulkAdd },
             onProviderSearch = { screen = Screen.ProviderSearch },
+            onLogFood = { screen = Screen.LogFood },
             onEditFood = { food -> editFood = food; screen = Screen.EditFood },
             onEditMeal = { meal -> editMeal = meal; screen = Screen.EditMeal },
             onLogged = vm::refresh,
@@ -181,6 +201,10 @@ private fun AppRoot(
             providerVm,
             onBack = { screen = Screen.Main },
         )
+        Screen.LogFood -> LogFoodScreen(
+            libraryVm,
+            onBack = { screen = Screen.Main },
+        )
     }
 }
 
@@ -195,6 +219,7 @@ private fun HomePager(
     onOpenMeal: () -> Unit,
     onBulkAdd: () -> Unit,
     onProviderSearch: () -> Unit,
+    onLogFood: () -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
     onEditMeal: (LibraryMeal) -> Unit,
     onLogged: () -> Unit,
@@ -202,6 +227,9 @@ private fun HomePager(
     // Page 0 = Library (swipe right), 1 = Today (start), 2 = History (swipe left).
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
     val scope = rememberCoroutineScope()
+    var showAdd by remember { mutableStateOf(false) }
+    var showWeight by remember { mutableStateOf(false) }
+    val historyState by historyVm.state.collectAsStateWithLifecycle()
     // System back from a side page returns to Today (rather than exiting).
     BackHandler(enabled = pagerState.currentPage != 1) {
         scope.launch { pagerState.animateScrollToPage(1) }
@@ -212,13 +240,11 @@ private fun HomePager(
                 0 -> LibraryScreen(
                     libraryVm,
                     mealVm = mealVm,
-                    onBulkAdd = onBulkAdd,
-                    onProviderSearch = onProviderSearch,
                     onEditFood = onEditFood,
                     onEditMeal = onEditMeal,
                     onLogged = onLogged,
                 )
-                1 -> MainScreen(mainVm, onOpenSettings, onOpenMeal)
+                1 -> MainScreen(mainVm, onOpenSettings)
                 else -> HistoryScreen(historyVm)
             }
         }
@@ -227,7 +253,68 @@ private fun HomePager(
             selected = pagerState.currentPage,
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 6.dp),
         )
+        // One add-everything button, the same on every page.
+        FloatingActionButton(
+            onClick = { showAdd = true },
+            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp),
+        ) { Icon(Icons.Default.Add, contentDescription = "Add") }
     }
+
+    if (showAdd) {
+        AddSheet(
+            onDismiss = { showAdd = false },
+            onLogFood = { showAdd = false; onLogFood() },
+            onLogWeight = { showAdd = false; showWeight = true },
+            onNewMeal = { showAdd = false; onOpenMeal() },
+            onScan = { showAdd = false; onBulkAdd() },
+            onSearch = { showAdd = false; onProviderSearch() },
+        )
+    }
+    if (showWeight) {
+        LogWeightDialog(
+            unit = historyState.unit,
+            initial = historyState.rows.firstOrNull { it.weight != null }?.weight,
+            onConfirm = { historyVm.logWeight(it); showWeight = false },
+            onDismiss = { showWeight = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddSheet(
+    onDismiss: () -> Unit,
+    onLogFood: () -> Unit,
+    onLogWeight: () -> Unit,
+    onNewMeal: () -> Unit,
+    onScan: () -> Unit,
+    onSearch: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding()) {
+            AddItem(Icons.Default.RestaurantMenu, "Log food", "Add a food to today's diary", onLogFood)
+            AddItem(Icons.Default.MonitorWeight, "Log weight", "Record a weigh-in", onLogWeight)
+            AddItem(Icons.Default.Restaurant, "New meal", "Build a recipe", onNewMeal)
+            AddItem(Icons.Default.QrCodeScanner, "Scan barcode", "Add a food by barcode", onScan)
+            AddItem(Icons.Default.TravelExplore, "Search foods", "Find a food on Open Food Facts", onSearch)
+        }
+    }
+}
+
+@Composable
+private fun AddItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle) },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        modifier = Modifier.clickable(onClick = onClick),
+    )
 }
 
 @Composable

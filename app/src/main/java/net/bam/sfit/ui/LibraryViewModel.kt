@@ -122,7 +122,8 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
                     mealType = mealType,
                     date = LocalDate.now().toString(),
                 )
-                ui.update { it.copy(message = "Logged ${food.name}") }
+                ui.update { it.copy(detail = null, message = "Logged ${food.name}") }
+                repo.refresh()
                 onLogged()
             } catch (e: Exception) {
                 ui.update { it.copy(message = e.message ?: "Log failed") }

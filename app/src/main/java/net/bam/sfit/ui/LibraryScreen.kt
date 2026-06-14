@@ -19,9 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -66,8 +64,6 @@ import kotlin.math.roundToInt
 fun LibraryScreen(
     vm: LibraryViewModel,
     mealVm: MealViewModel,
-    onBulkAdd: () -> Unit,
-    onProviderSearch: () -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
     onEditMeal: (LibraryMeal) -> Unit,
     onLogged: () -> Unit,
@@ -95,12 +91,6 @@ fun LibraryScreen(
                         )
                     }) {
                         Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Toggle sort")
-                    }
-                    IconButton(onClick = onProviderSearch) {
-                        Icon(Icons.Default.TravelExplore, contentDescription = "Add food from a provider")
-                    }
-                    IconButton(onClick = onBulkAdd) {
-                        Icon(Icons.Default.QrCodeScanner, contentDescription = "Bulk add foods")
                     }
                 },
             )
@@ -379,7 +369,7 @@ private fun FoodDetailSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LogFoodDialog(
+internal fun LogFoodDialog(
     food: BarcodeFood,
     onConfirm: (Double, String) -> Unit,
     onDismiss: () -> Unit,
