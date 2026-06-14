@@ -1,0 +1,9 @@
+<resources>
+    <!-- Pre-Compose activity theme: no action bar, transparent system bars.
+         All real theming/colours happen in Compose (SFitTheme). -->
+    <style name="Theme.SFit" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@android:color/background_dark</item>
+    </style>
+</resources>
