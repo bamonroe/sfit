@@ -152,29 +152,25 @@ data class BarcodeResult(
     val food: BarcodeFood? = null,
 )
 
-// ---- Provider (Open Food Facts) text search ----
+// ---- Provider food search (generic V2 API) ----
 
-@Serializable
-data class ProviderNutriments(
-    @SerialName("energy-kcal_100g") val energyKcal100g: Double = 0.0,
+/** Provider types that return foods (the rest, e.g. wger, are exercise sources). */
+private val FOOD_PROVIDER_TYPES = setOf(
+    "openfoodfacts", "usda", "swissfood", "nutritionix", "fatsecret", "mealie", "norish", "tandoor",
 )
 
-/** One Open Food Facts search hit. Carries a barcode [code], so importing
- *  reuses the existing barcode → DB pipeline. */
+/** A configured external data provider (we only surface the food ones). */
 @Serializable
-data class ProviderFood(
-    @SerialName("product_name") val productName: String = "",
-    @SerialName("product_name_en") val productNameEn: String = "",
-    val brands: String? = null,
-    val code: String = "",
-    val nutriments: ProviderNutriments = ProviderNutriments(),
-) {
-    val name: String get() = productName.ifBlank { productNameEn }
-    val kcalPer100g: Double get() = nutriments.energyKcal100g
-}
+data class ExternalProvider(
+    val id: String = "",
+    @SerialName("provider_type") val providerType: String = "",
+    @SerialName("provider_name") val providerName: String = "",
+    @SerialName("is_active") val isActive: Boolean = true,
+)
 
+/** /v2/foods/search/{providerType} returns normalized foods for any provider. */
 @Serializable
-private data class OffSearchResponse(val products: List<ProviderFood> = emptyList())
+private data class V2SearchResponse(val foods: List<BarcodeFood> = emptyList())
 
 /** POST /foods body — flat nutrition fields, mirroring the verified payload. */
 @Serializable
@@ -531,16 +527,22 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     suspend fun barcodeLookup(barcode: String): BarcodeResult =
         decode(getBody("/foods/barcode/$barcode"), BarcodeResult())
 
-    /** GET /foods/openfoodfacts/search — text search the Open Food Facts provider.
-     *  OFF intermittently returns an HTML error page (the server wraps it as 500),
-     *  so retry a couple of times before giving up. */
-    suspend fun searchOpenFoodFacts(query: String, page: Int = 1): List<ProviderFood> {
+    /** GET /external-providers — the user's active food data providers. */
+    suspend fun foodProviders(): List<ExternalProvider> =
+        decode(getBody("/external-providers"), emptyList<ExternalProvider>())
+            .filter { it.isActive && it.providerType in FOOD_PROVIDER_TYPES }
+
+    /** GET /v2/foods/search/{providerType} — normalized text search for any
+     *  provider. Some providers (e.g. Open Food Facts) intermittently return an
+     *  HTML error the server wraps as 500, so retry a couple of times. */
+    suspend fun searchProvider(providerType: String, query: String, providerId: String): List<BarcodeFood> {
         val q = java.net.URLEncoder.encode(query, "UTF-8")
+        val pid = if (providerId.isNotBlank()) "&providerId=$providerId" else ""
         var last: Exception? = null
         repeat(3) {
             try {
-                return decode(getBody("/foods/openfoodfacts/search?query=$q&page=$page"), OffSearchResponse())
-                    .products.filter { it.code.isNotBlank() && it.name.isNotBlank() }
+                return decode(getBody("/v2/foods/search/$providerType?query=$q$pid"), V2SearchResponse())
+                    .foods.filter { it.name.isNotBlank() }
             } catch (e: Exception) {
                 last = e
                 delay(600)
@@ -548,6 +550,9 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
         }
         throw last ?: IllegalStateException("Search failed")
     }
+
+    /** Import a provider search result into the food DB (POST /foods). */
+    suspend fun addFood(food: BarcodeFood): Boolean = importFood(food).id.isNotBlank()
 
     /** POST /foods — import a (provider) food into the DB; returns id + variant id. */
     private suspend fun importFood(f: BarcodeFood): SavedFood {

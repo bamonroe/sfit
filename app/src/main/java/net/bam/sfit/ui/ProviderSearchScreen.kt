@@ -17,11 +17,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -31,7 +35,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -39,7 +45,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import net.bam.sfit.data.ProviderFood
+import net.bam.sfit.data.BarcodeFood
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,6 +54,7 @@ fun ProviderSearchScreen(vm: ProviderSearchViewModel, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val keyboard = LocalSoftwareKeyboardController.current
+    var menuOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); vm.clearMessage() }
@@ -57,7 +64,7 @@ fun ProviderSearchScreen(vm: ProviderSearchViewModel, onBack: () -> Unit) {
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
-                title = { Text("Add from Open Food Facts") },
+                title = { Text("Add food") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -67,15 +74,40 @@ fun ProviderSearchScreen(vm: ProviderSearchViewModel, onBack: () -> Unit) {
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            ExposedDropdownMenuBox(
+                expanded = menuOpen,
+                onExpandedChange = { menuOpen = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                OutlinedTextField(
+                    value = state.selected?.providerName ?: "No food providers configured",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Provider") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuOpen) },
+                    modifier = Modifier
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = state.providers.isNotEmpty())
+                        .fillMaxWidth(),
+                )
+                ExposedDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    state.providers.forEach { p ->
+                        DropdownMenuItem(
+                            text = { Text(p.providerName) },
+                            onClick = { vm.selectProvider(p); menuOpen = false },
+                        )
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = state.query,
                 onValueChange = vm::setQuery,
-                placeholder = { Text("Search foods online") },
+                placeholder = { Text("Search foods") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { keyboard?.hide(); vm.search() }),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
             )
             HorizontalDivider()
 
@@ -90,16 +122,17 @@ fun ProviderSearchScreen(vm: ProviderSearchViewModel, onBack: () -> Unit) {
                         modifier = Modifier.align(Alignment.TopCenter).padding(32.dp),
                     )
                     !state.searched -> Text(
-                        "Search Open Food Facts and tap a result to add it to your library.",
+                        "Pick a provider and search, then tap a result to add it to your library.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.align(Alignment.TopCenter).padding(32.dp),
                     )
                     else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(state.results, key = { it.code }) { food ->
+                        items(state.results, key = { it.providerExternalId ?: it.name }) { food ->
                             ProviderRow(
                                 food = food,
-                                importing = state.importingCode == food.code,
+                                importing = state.importingKey != null &&
+                                    state.importingKey == food.providerExternalId,
                                 onClick = { vm.import(food) },
                             )
                             HorizontalDivider()
@@ -112,7 +145,7 @@ fun ProviderSearchScreen(vm: ProviderSearchViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ProviderRow(food: ProviderFood, importing: Boolean, onClick: () -> Unit) {
+private fun ProviderRow(food: BarcodeFood, importing: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable(enabled = !importing, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -121,11 +154,12 @@ private fun ProviderRow(food: ProviderFood, importing: Boolean, onClick: () -> U
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(food.name, style = MaterialTheme.typography.bodyLarge)
+            val v = food.defaultVariant
             val sub = buildString {
-                food.brands?.takeIf { it.isNotBlank() }?.let { append(it) }
-                if (food.kcalPer100g > 0) {
+                food.brand?.takeIf { it.isNotBlank() }?.let { append(it) }
+                if (v.calories > 0 && v.servingSize > 0) {
                     if (isNotEmpty()) append("  ·  ")
-                    append("${food.kcalPer100g.roundToInt()} kcal/100 g")
+                    append("${v.calories.roundToInt()} kcal / ${fmtServing(v.servingSize)} ${v.servingUnit}")
                 }
             }
             if (sub.isNotBlank()) {
@@ -137,3 +171,6 @@ private fun ProviderRow(food: ProviderFood, importing: Boolean, onClick: () -> U
         }
     }
 }
+
+private fun fmtServing(d: Double): String =
+    if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)

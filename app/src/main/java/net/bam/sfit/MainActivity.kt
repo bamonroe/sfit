@@ -297,7 +297,7 @@ private fun AddSheet(
             AddItem(Icons.Default.MonitorWeight, "Log weight", "Record a weigh-in", onLogWeight)
             AddItem(Icons.Default.Restaurant, "New meal", "Build a recipe", onNewMeal)
             AddItem(Icons.Default.QrCodeScanner, "Scan barcode", "Add a food by barcode", onScan)
-            AddItem(Icons.Default.TravelExplore, "Search foods", "Find a food on Open Food Facts", onSearch)
+            AddItem(Icons.Default.TravelExplore, "Search foods", "Find a food from a provider", onSearch)
         }
     }
 }
