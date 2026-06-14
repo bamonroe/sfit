@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Settings
@@ -43,7 +42,6 @@ import kotlin.math.roundToInt
 fun MainScreen(
     vm: MainViewModel,
     onOpenSettings: () -> Unit,
-    onOpenHistory: () -> Unit,
     onOpenMeal: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -55,9 +53,6 @@ fun MainScreen(
                 actions = {
                     IconButton(onClick = onOpenMeal) {
                         Icon(Icons.Default.Restaurant, contentDescription = "New meal")
-                    }
-                    IconButton(onClick = onOpenHistory) {
-                        Icon(Icons.Default.History, contentDescription = "History")
                     }
                     IconButton(onClick = { vm.refresh() }, enabled = state.configured) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")

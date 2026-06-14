@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Main, Settings, History, Meal, Scanner, BulkAdd, EditFood }
+private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood }
 
 @Composable
 private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
@@ -77,14 +77,13 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
             mainVm = vm,
             libraryVm = libraryVm,
             mealVm = mealVm,
+            historyVm = historyVm,
             onOpenSettings = { screen = Screen.Settings },
-            onOpenHistory = { historyVm.load(); screen = Screen.History },
             onOpenMeal = { screen = Screen.Meal },
             onBulkAdd = { bulkVm.reset(); screen = Screen.BulkAdd },
             onEditFood = { food -> editFood = food; screen = Screen.EditFood },
         )
         Screen.Settings -> SettingsScreen(store, onDone = { screen = Screen.Main })
-        Screen.History -> HistoryScreen(historyVm, onBack = { screen = Screen.Main })
         Screen.Meal -> MealScreen(
             mealVm,
             onBack = { screen = Screen.Main },
@@ -127,20 +126,20 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
     }
 }
 
-/** Today ⟷ Library swipe pager. Swipe right from Today reveals the Library. */
+/** Library ⟵ Today ⟶ History swipe pager (Today centred). */
 @Composable
 private fun HomePager(
     mainVm: MainViewModel,
     libraryVm: LibraryViewModel,
     mealVm: MealViewModel,
+    historyVm: HistoryViewModel,
     onOpenSettings: () -> Unit,
-    onOpenHistory: () -> Unit,
     onOpenMeal: () -> Unit,
     onBulkAdd: () -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
 ) {
-    // Page 0 = Library (left), page 1 = Today (right); start on Today.
-    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
+    // Page 0 = Library (swipe right), 1 = Today (start), 2 = History (swipe left).
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
         when (page) {
             0 -> LibraryScreen(
@@ -149,7 +148,8 @@ private fun HomePager(
                 onBulkAdd = onBulkAdd,
                 onEditFood = onEditFood,
             )
-            else -> MainScreen(mainVm, onOpenSettings, onOpenHistory, onOpenMeal)
+            1 -> MainScreen(mainVm, onOpenSettings, onOpenMeal)
+            else -> HistoryScreen(historyVm)
         }
     }
 }

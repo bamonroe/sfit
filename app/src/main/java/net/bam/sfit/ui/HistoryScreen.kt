@@ -38,7 +38,7 @@ private val lossGreen = Color(0xFF2ECC71)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(vm: HistoryViewModel, onBack: () -> Unit) {
+fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
     val state by vm.state.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -46,8 +46,10 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: () -> Unit) {
             TopAppBar(
                 title = { Text("History") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
             )
