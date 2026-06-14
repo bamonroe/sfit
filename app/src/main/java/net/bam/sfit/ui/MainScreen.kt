@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,7 +39,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(vm: MainViewModel, onOpenSettings: () -> Unit) {
+fun MainScreen(vm: MainViewModel, onOpenSettings: () -> Unit, onOpenHistory: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -46,6 +47,9 @@ fun MainScreen(vm: MainViewModel, onOpenSettings: () -> Unit) {
             TopAppBar(
                 title = { Text("Today") },
                 actions = {
+                    IconButton(onClick = onOpenHistory) {
+                        Icon(Icons.Default.History, contentDescription = "History")
+                    }
                     IconButton(onClick = { vm.refresh() }, enabled = state.configured) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }

@@ -12,8 +12,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * One logged food in the diary. Nutrients are stored *per serving_size*, so the
- * amount actually eaten is `field * quantity / serving_size` (mirrors the
- * SparkyFitness API and the `nutrition today` CLI).
+ * amount actually eaten is `field * quantity / serving_size`.
  */
 @Serializable
 data class FoodEntry(
@@ -37,14 +36,36 @@ data class Goals(
     val fat: Double = 0.0,
 )
 
+/** Server-computed energy balance for a day. */
+@Serializable
+data class CalorieBalance(
+    val eaten: Double = 0.0,
+    val burned: Double = 0.0,
+    val goal: Double = 0.0,
+    val net: Double = 0.0,
+    val bmr: Double = 0.0,
+    val remaining: Double = 0.0,
+) {
+    /** Net calorie deficit vs maintenance: positive = under maintenance. */
+    val deficit: Double get() = bmr + burned - eaten
+}
+
 @Serializable
 data class DailySummary(
     @SerialName("foodEntries") val foodEntries: List<FoodEntry> = emptyList(),
     val goals: Goals = Goals(),
+    val calorieBalance: CalorieBalance = CalorieBalance(),
 ) {
     val consumedCalories: Double get() = foodEntries.sumOf { it.consumedCalories }
     val remainingCalories: Double get() = goals.calories - consumedCalories
 }
+
+/** A check-in measurement row (we only need date + weight). */
+@Serializable
+data class CheckIn(
+    @SerialName("entry_date") val date: String = "",
+    val weight: Double? = null,
+)
 
 /** Thin client for the SparkyFitness REST API (auth: Bearer api key). */
 class SparkyApi(baseUrl: String, private val apiKey: String) {
@@ -62,9 +83,9 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
 
     private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
 
-    /** GET /daily-summary?date=YYYY-MM-DD */
-    suspend fun dailySummary(date: String): DailySummary = withContext(Dispatchers.IO) {
-        val url = "$base/daily-summary?date=$date"
+    /** Authenticated GET returning the raw body, with logging + error surfacing. */
+    private suspend fun getBody(path: String): String = withContext(Dispatchers.IO) {
+        val url = base + path
         Log.d(TAG, "GET $url")
         val request = Request.Builder()
             .url(url)
@@ -74,19 +95,27 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
         client.newCall(request).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
             val ctype = resp.header("Content-Type") ?: "?"
-            Log.d(TAG, "HTTP ${resp.code} [$ctype] ${body.length}B: ${body.take(300)}")
+            Log.d(TAG, "HTTP ${resp.code} [$ctype] ${body.length}B: ${body.take(160)}")
             if (!resp.isSuccessful) {
                 error("HTTP ${resp.code}: ${body.take(160).ifBlank { resp.message }}")
             }
-            if (body.isBlank()) return@withContext DailySummary()
-            try {
-                json.decodeFromString<DailySummary>(body)
-            } catch (e: Exception) {
-                Log.e(TAG, "JSON parse failed (content-type=$ctype). Body: ${body.take(300)}", e)
-                error("Not JSON (got $ctype). Starts: \"${body.take(60).trim()}…\"")
+            if (!ctype.contains("json", ignoreCase = true) && body.startsWith("<")) {
+                error("Not JSON (got $ctype). Check the Server URL.")
             }
+            body
         }
     }
+
+    private inline fun <reified T> decode(body: String, fallback: T): T =
+        if (body.isBlank()) fallback else json.decodeFromString(body)
+
+    /** GET /daily-summary?date=YYYY-MM-DD */
+    suspend fun dailySummary(date: String): DailySummary =
+        decode(getBody("/daily-summary?date=$date"), DailySummary())
+
+    /** GET /measurements/check-in-measurements-range/{start}/{end} */
+    suspend fun checkInRange(start: String, end: String): List<CheckIn> =
+        decode(getBody("/measurements/check-in-measurements-range/$start/$end"), emptyList())
 
     private companion object {
         const val TAG = "SFit"
