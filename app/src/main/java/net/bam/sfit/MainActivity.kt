@@ -17,9 +17,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import net.bam.sfit.data.BarcodeFood
 import net.bam.sfit.data.DraftStore
 import net.bam.sfit.data.SettingsStore
 import net.bam.sfit.ui.BulkAddViewModel
+import net.bam.sfit.ui.EditFoodScreen
 import net.bam.sfit.ui.HistoryScreen
 import net.bam.sfit.ui.HistoryViewModel
 import net.bam.sfit.ui.LibraryScreen
@@ -44,11 +46,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Main, Settings, History, Meal, Scanner, BulkAdd }
+private enum class Screen { Main, Settings, History, Meal, Scanner, BulkAdd, EditFood }
 
 @Composable
 private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
     var screen by remember { mutableStateOf(Screen.Main) }
+    var editFood by remember { mutableStateOf<BarcodeFood?>(null) }
 
     val factory = remember(store, draftStore) {
         object : ViewModelProvider.Factory {
@@ -77,6 +80,18 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
             onOpenHistory = { historyVm.load(); screen = Screen.History },
             onOpenMeal = { screen = Screen.Meal },
             onBulkAdd = { bulkVm.reset(); screen = Screen.BulkAdd },
+            onAddToMeal = { food ->
+                mealVm.addFood(
+                    foodId = food.id ?: "",
+                    variantId = food.defaultVariant.id ?: "",
+                    name = food.name,
+                    brand = food.brand,
+                    calories = food.defaultVariant.calories,
+                    servingSize = food.defaultVariant.servingSize,
+                    servingUnit = food.defaultVariant.servingUnit,
+                )
+            },
+            onEditFood = { food -> editFood = food; screen = Screen.EditFood },
         )
         Screen.Settings -> SettingsScreen(store, onDone = { screen = Screen.Main })
         Screen.History -> HistoryScreen(historyVm, onBack = { screen = Screen.Main })
@@ -107,6 +122,18 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
                 countText = "${s.count} added",
             )
         }
+        Screen.EditFood -> {
+            val food = editFood
+            if (food == null) {
+                screen = Screen.Main
+            } else {
+                EditFoodScreen(
+                    food = food,
+                    store = store,
+                    onDone = { editFood = null; libraryVm.load(); screen = Screen.Main },
+                )
+            }
+        }
     }
 }
 
@@ -119,12 +146,19 @@ private fun HomePager(
     onOpenHistory: () -> Unit,
     onOpenMeal: () -> Unit,
     onBulkAdd: () -> Unit,
+    onAddToMeal: (BarcodeFood) -> Unit,
+    onEditFood: (BarcodeFood) -> Unit,
 ) {
     // Page 0 = Library (left), page 1 = Today (right); start on Today.
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
         when (page) {
-            0 -> LibraryScreen(libraryVm, onBulkAdd = onBulkAdd)
+            0 -> LibraryScreen(
+                libraryVm,
+                onBulkAdd = onBulkAdd,
+                onAddToMeal = onAddToMeal,
+                onEditFood = onEditFood,
+            )
             else -> MainScreen(mainVm, onOpenSettings, onOpenHistory, onOpenMeal)
         }
     }

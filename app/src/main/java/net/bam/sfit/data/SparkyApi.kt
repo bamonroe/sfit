@@ -213,6 +213,21 @@ data class LibraryMeal(
     val name: String = "",
 )
 
+@Serializable
+private data class UpdateFoodNameReq(val name: String, val brand: String? = null)
+
+@Serializable
+private data class UpdateVariantReq(
+    val id: String,
+    @SerialName("food_id") val foodId: String,
+    @SerialName("serving_size") val servingSize: Double,
+    @SerialName("serving_unit") val servingUnit: String,
+    val calories: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double,
+)
+
 // Mirrors SparkyFitness ACTIVITY_MULTIPLIERS (Frontend calorieCalculations.ts).
 private val ACTIVITY_MULTIPLIERS = mapOf(
     "not_much" to 1.2, "light" to 1.375, "moderate" to 1.55, "heavy" to 1.725,
@@ -269,23 +284,27 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     private inline fun <reified T> decode(body: String, fallback: T): T =
         if (body.isBlank()) fallback else json.decodeFromString(body)
 
-    /** Authenticated POST of a JSON body, returning the raw response body. */
-    private suspend fun postBody(path: String, bodyJson: String): String = withContext(Dispatchers.IO) {
-        val url = base + path
-        Log.d(TAG, "POST $url ${bodyJson.take(120)}")
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $apiKey")
-            .header("Accept", "application/json")
-            .post(bodyJson.toRequestBody("application/json".toMediaType()))
-            .build()
-        client.newCall(request).execute().use { resp ->
-            val body = resp.body?.string().orEmpty()
-            Log.d(TAG, "HTTP ${resp.code} ${body.take(160)}")
-            if (!resp.isSuccessful) error("HTTP ${resp.code}: ${body.take(200).ifBlank { resp.message }}")
-            body
+    /** Authenticated request with an optional JSON body, returning the raw body. */
+    private suspend fun sendBody(method: String, path: String, bodyJson: String?): String =
+        withContext(Dispatchers.IO) {
+            val url = base + path
+            Log.d(TAG, "$method $url ${bodyJson?.take(120).orEmpty()}")
+            val rb = bodyJson?.toRequestBody("application/json".toMediaType())
+            val request = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $apiKey")
+                .header("Accept", "application/json")
+                .method(method, rb)
+                .build()
+            client.newCall(request).execute().use { resp ->
+                val body = resp.body?.string().orEmpty()
+                Log.d(TAG, "HTTP ${resp.code} ${body.take(160)}")
+                if (!resp.isSuccessful) error("HTTP ${resp.code}: ${body.take(200).ifBlank { resp.message }}")
+                body
+            }
         }
-    }
+
+    private suspend fun postBody(path: String, bodyJson: String) = sendBody("POST", path, bodyJson)
 
     /** GET /daily-summary?date=YYYY-MM-DD */
     suspend fun dailySummary(date: String): DailySummary =
@@ -310,6 +329,37 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** GET /meals?filter=mine — the user's recipes. */
     suspend fun meals(): List<LibraryMeal> =
         decode(getBody("/meals?filter=mine"), emptyList())
+
+    /** GET /foods/{id} — full food incl. default_variant nutrition. */
+    suspend fun foodDetail(id: String): BarcodeFood =
+        decode(getBody("/foods/$id"), BarcodeFood())
+
+    /** DELETE /foods/{id} */
+    suspend fun deleteFood(id: String) {
+        sendBody("DELETE", "/foods/$id", null)
+    }
+
+    /** Edit a food's name and its default variant's per-serving nutrition. */
+    suspend fun updateFood(
+        foodId: String,
+        variantId: String,
+        name: String,
+        brand: String?,
+        servingSize: Double,
+        servingUnit: String,
+        calories: Double,
+        protein: Double,
+        carbs: Double,
+        fat: Double,
+    ) {
+        sendBody("PUT", "/foods/$foodId", json.encodeToString(UpdateFoodNameReq(name, brand)))
+        sendBody(
+            "PUT", "/foods/food-variants/$variantId",
+            json.encodeToString(
+                UpdateVariantReq(variantId, foodId, servingSize, servingUnit, calories, protein, carbs, fat),
+            ),
+        )
+    }
 
     /** GET /foods/barcode/{barcode} — local DB first, then OpenFoodFacts fallback. */
     suspend fun barcodeLookup(barcode: String): BarcodeResult =

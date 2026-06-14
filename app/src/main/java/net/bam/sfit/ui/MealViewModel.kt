@@ -110,6 +110,32 @@ class MealViewModel(
         }
     }
 
+    /** Add an already-known food (e.g. from the Library) to the draft. */
+    fun addFood(
+        foodId: String,
+        variantId: String,
+        name: String,
+        brand: String?,
+        calories: Double,
+        servingSize: Double,
+        servingUnit: String,
+    ) {
+        if (draft.ingredients.any { it.foodId == foodId }) {
+            _state.update { it.copy(message = "Already in meal") }
+            return
+        }
+        mutate { d ->
+            d.copy(
+                ingredients = d.ingredients + DraftIngredient(
+                    foodId = foodId, variantId = variantId, name = name, brand = brand,
+                    barcode = "", calories = calories, servingSize = servingSize,
+                    servingUnit = servingUnit, grams = 0.0,
+                ),
+            )
+        }
+        _state.update { it.copy(message = "Added $name to meal") }
+    }
+
     fun createMeal() {
         val d = draft
         val lines = d.ingredients.filter { it.grams > 0 }

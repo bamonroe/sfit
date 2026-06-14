@@ -1,8 +1,11 @@
 package net.bam.sfit.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,31 +14,56 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.bam.sfit.data.BarcodeFood
 import net.bam.sfit.data.LibraryFood
 import net.bam.sfit.data.LibraryMeal
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(vm: LibraryViewModel, onBulkAdd: () -> Unit) {
+fun LibraryScreen(
+    vm: LibraryViewModel,
+    onBulkAdd: () -> Unit,
+    onAddToMeal: (BarcodeFood) -> Unit,
+    onEditFood: (BarcodeFood) -> Unit,
+) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.message) {
+        state.message?.let { snackbar.showSnackbar(it); vm.clearMessage() }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(
                 title = { Text("Library") },
@@ -59,24 +87,113 @@ fun LibraryScreen(vm: LibraryViewModel, onBulkAdd: () -> Unit) {
                 )
                 else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                     item { SectionHeader("Meals", state.meals.size) }
-                    if (state.meals.isEmpty() && !state.loading) {
-                        item { EmptyRow("No meals yet") }
-                    }
+                    if (state.meals.isEmpty() && !state.loading) item { EmptyRow("No meals yet") }
                     items(state.meals, key = { "m" + it.id }) { MealRow(it) }
 
                     item { SectionHeader("Foods", state.totalFoods) }
-                    if (state.foods.isEmpty() && !state.loading) {
-                        item { EmptyRow("No foods yet") }
+                    if (state.foods.isEmpty() && !state.loading) item { EmptyRow("No foods yet") }
+                    items(state.foods, key = { "f" + it.id }) { food ->
+                        FoodRow(food, onClick = { vm.openFood(food.id) })
                     }
-                    items(state.foods, key = { "f" + it.id }) { FoodRow(it) }
                 }
             }
-            if (state.loading) {
+            if (state.loading || state.detailLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp))
             }
         }
     }
+
+    state.detail?.let { food ->
+        FoodDetailSheet(
+            food = food,
+            onDismiss = vm::closeDetail,
+            onAddToMeal = { onAddToMeal(food); vm.notify("Added ${food.name} to meal"); vm.closeDetail() },
+            onEdit = { onEditFood(food); vm.closeDetail() },
+            onDelete = { food.id?.let(vm::deleteFood) },
+        )
+    }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FoodDetailSheet(
+    food: BarcodeFood,
+    onDismiss: () -> Unit,
+    onAddToMeal: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    var confirmDelete by remember { mutableStateOf(false) }
+    val v = food.defaultVariant
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
+            Text(food.name.ifBlank { "(unnamed)" }, style = MaterialTheme.typography.headlineSmall)
+            if (!food.brand.isNullOrBlank()) {
+                Text(food.brand!!, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            Text(
+                "${v.calories.roundToInt()} kcal  ·  per ${fmt(v.servingSize)} ${v.servingUnit}",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Macro("Protein", v.protein, Modifier.weight(1f))
+                Macro("Carbs", v.carbs, Modifier.weight(1f))
+                Macro("Fat", v.fat, Modifier.weight(1f))
+            }
+            Text(
+                "Fiber ${fmt(v.dietaryFiber)}g · Sugar ${fmt(v.sugars)}g · Sodium ${v.sodium.roundToInt()}mg",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(onClick = onAddToMeal, modifier = Modifier.weight(1f)) { Text("Add to meal") }
+                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("Edit") }
+                OutlinedButton(
+                    onClick = { confirmDelete = true },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            }
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete food?") },
+            text = { Text("Remove \"${food.name}\" from your database?") },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; onDelete() }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun Macro(label: String, grams: Double, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("${fmt(grams)}g", style = MaterialTheme.typography.titleMedium)
+        Text(label, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private fun fmt(d: Double): String = if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
 
 @Composable
 private fun SectionHeader(label: String, count: Int) {
@@ -93,15 +210,15 @@ private fun SectionHeader(label: String, count: Int) {
 }
 
 @Composable
-private fun FoodRow(food: LibraryFood) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+private fun FoodRow(food: LibraryFood, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+    ) {
         Text(food.name.ifBlank { "(unnamed)" }, style = MaterialTheme.typography.bodyLarge)
         if (!food.brand.isNullOrBlank()) {
-            Text(
-                food.brand!!,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Text(food.brand!!, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
     HorizontalDivider()
@@ -119,9 +236,5 @@ private fun MealRow(meal: LibraryMeal) {
 
 @Composable
 private fun EmptyRow(text: String) {
-    Text(
-        text,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(16.dp),
-    )
+    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
 }
