@@ -26,6 +26,7 @@ data class LibraryState(
     val totalFoods: Int = 0,
     val meals: List<LibraryMeal> = emptyList(),
     val sortMode: SortMode = SortMode.Frequency,
+    val query: String = "",
     val error: String? = null,
     val detail: BarcodeFood? = null,     // food detail shown in the sheet
     val detailLoading: Boolean = false,
@@ -36,6 +37,7 @@ data class LibraryState(
 /** Library UI bits that aren't shared app data (live only in this screen). */
 private data class LibraryUi(
     val sortMode: SortMode = SortMode.Frequency,
+    val query: String = "",
     val detail: BarcodeFood? = null,
     val detailLoading: Boolean = false,
     val mealDetail: LibraryMeal? = null,
@@ -47,12 +49,17 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
 
     val state: StateFlow<LibraryState> =
         combine(repo.library, repo.refreshing, repo.error, ui) { lib, loading, error, u ->
+            val q = u.query.trim()
+            val foods = sortFoods(lib.items.filter { it.matches(q) }, u.sortMode)
+            val meals = lib.meals.filter { it.name.contains(q, ignoreCase = true) }
             LibraryState(
                 loading = loading,
-                foods = sortFoods(lib.items, u.sortMode),
-                totalFoods = lib.total,
-                meals = lib.meals,
+                foods = foods,
+                // Show match count while searching, the full DB total otherwise.
+                totalFoods = if (q.isBlank()) lib.total else foods.size,
+                meals = meals,
                 sortMode = u.sortMode,
+                query = u.query,
                 error = if (lib.items.isEmpty() && lib.meals.isEmpty()) error else null,
                 detail = u.detail,
                 detailLoading = u.detailLoading,
@@ -66,6 +73,13 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
 
     /** Switch sort order — no network, the screen re-derives from shared data. */
     fun setSortMode(mode: SortMode) = ui.update { it.copy(sortMode = mode) }
+
+    /** Filter the library by name/brand — no network, all data is cached. */
+    fun setQuery(q: String) = ui.update { it.copy(query = q) }
+
+    private fun FoodUsage.matches(q: String): Boolean =
+        q.isBlank() || food.name.contains(q, ignoreCase = true) ||
+            (food.brand?.contains(q, ignoreCase = true) ?: false)
 
     private fun sortFoods(items: List<FoodUsage>, mode: SortMode): List<LibraryFood> = when (mode) {
         SortMode.Alphabetical -> items.sortedBy { it.food.name.lowercase() }.map { it.food }

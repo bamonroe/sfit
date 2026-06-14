@@ -18,8 +18,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -103,7 +105,9 @@ fun LibraryScreen(
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            LibrarySearchField(query = state.query, onQuery = vm::setQuery)
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when {
                 state.error != null -> Text(
                     state.error!!,
@@ -137,6 +141,7 @@ fun LibraryScreen(
             }
             if (state.detailLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp))
+            }
             }
         }
     }
@@ -187,6 +192,25 @@ fun LibraryScreen(
             onDelete = { vm.deleteMeal(meal.id) },
         )
     }
+}
+
+@Composable
+private fun LibrarySearchField(query: String, onQuery: (String) -> Unit) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQuery,
+        placeholder = { Text("Search foods & meals") },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQuery("") }) {
+                    Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                }
+            }
+        },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
