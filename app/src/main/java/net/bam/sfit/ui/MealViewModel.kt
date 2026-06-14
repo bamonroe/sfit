@@ -57,6 +57,9 @@ class MealViewModel(
 
     fun setName(name: String) = mutate { it.copy(name = name) }
 
+    /** Clear the draft to start a fresh meal. */
+    fun startNew() = mutate { MealDraft() }
+
     fun setGrams(index: Int, grams: Double) = mutate { d ->
         d.copy(ingredients = d.ingredients.mapIndexed { i, ing ->
             if (i == index) ing.copy(grams = grams) else ing

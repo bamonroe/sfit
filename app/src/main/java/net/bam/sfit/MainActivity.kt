@@ -76,21 +76,11 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
         Screen.Main -> HomePager(
             mainVm = vm,
             libraryVm = libraryVm,
+            mealVm = mealVm,
             onOpenSettings = { screen = Screen.Settings },
             onOpenHistory = { historyVm.load(); screen = Screen.History },
             onOpenMeal = { screen = Screen.Meal },
             onBulkAdd = { bulkVm.reset(); screen = Screen.BulkAdd },
-            onAddToMeal = { food ->
-                mealVm.addFood(
-                    foodId = food.id ?: "",
-                    variantId = food.defaultVariant.id ?: "",
-                    name = food.name,
-                    brand = food.brand,
-                    calories = food.defaultVariant.calories,
-                    servingSize = food.defaultVariant.servingSize,
-                    servingUnit = food.defaultVariant.servingUnit,
-                )
-            },
             onEditFood = { food -> editFood = food; screen = Screen.EditFood },
         )
         Screen.Settings -> SettingsScreen(store, onDone = { screen = Screen.Main })
@@ -142,11 +132,11 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
 private fun HomePager(
     mainVm: MainViewModel,
     libraryVm: LibraryViewModel,
+    mealVm: MealViewModel,
     onOpenSettings: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenMeal: () -> Unit,
     onBulkAdd: () -> Unit,
-    onAddToMeal: (BarcodeFood) -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
 ) {
     // Page 0 = Library (left), page 1 = Today (right); start on Today.
@@ -155,8 +145,8 @@ private fun HomePager(
         when (page) {
             0 -> LibraryScreen(
                 libraryVm,
+                mealVm = mealVm,
                 onBulkAdd = onBulkAdd,
-                onAddToMeal = onAddToMeal,
                 onEditFood = onEditFood,
             )
             else -> MainScreen(mainVm, onOpenSettings, onOpenHistory, onOpenMeal)

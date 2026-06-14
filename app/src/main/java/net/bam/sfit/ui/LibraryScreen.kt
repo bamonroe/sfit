@@ -51,12 +51,14 @@ import kotlin.math.roundToInt
 @Composable
 fun LibraryScreen(
     vm: LibraryViewModel,
+    mealVm: MealViewModel,
     onBulkAdd: () -> Unit,
-    onAddToMeal: (BarcodeFood) -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val mealState by mealVm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    var pickMealFor by remember { mutableStateOf<BarcodeFood?>(null) }
 
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); vm.clearMessage() }
@@ -107,11 +109,62 @@ fun LibraryScreen(
         FoodDetailSheet(
             food = food,
             onDismiss = vm::closeDetail,
-            onAddToMeal = { onAddToMeal(food); vm.notify("Added ${food.name} to meal"); vm.closeDetail() },
+            onAddToMeal = { pickMealFor = food; vm.closeDetail() },
             onEdit = { onEditFood(food); vm.closeDetail() },
             onDelete = { food.id?.let(vm::deleteFood) },
         )
     }
+
+    pickMealFor?.let { food ->
+        fun add() = mealVm.addFood(
+            foodId = food.id ?: "",
+            variantId = food.defaultVariant.id ?: "",
+            name = food.name,
+            brand = food.brand,
+            calories = food.defaultVariant.calories,
+            servingSize = food.defaultVariant.servingSize,
+            servingUnit = food.defaultVariant.servingUnit,
+        )
+        MealTargetDialog(
+            foodName = food.name,
+            currentCount = mealState.draft.ingredients.size,
+            currentName = mealState.draft.name,
+            onAddToCurrent = { add(); vm.notify("Added to meal"); pickMealFor = null },
+            onNewMeal = { mealVm.startNew(); add(); vm.notify("Started new meal"); pickMealFor = null },
+            onDismiss = { pickMealFor = null },
+        )
+    }
+}
+
+@Composable
+private fun MealTargetDialog(
+    foodName: String,
+    currentCount: Int,
+    currentName: String,
+    onAddToCurrent: () -> Unit,
+    onNewMeal: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val hasDraft = currentCount > 0 || currentName.isNotBlank()
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add \"$foodName\" to…") },
+        text = {
+            Column {
+                if (hasDraft) {
+                    val label = currentName.ifBlank { "Current meal" }
+                    TextButton(onClick = onAddToCurrent, modifier = Modifier.fillMaxWidth()) {
+                        Text("$label  ·  $currentCount item${if (currentCount == 1) "" else "s"}")
+                    }
+                }
+                TextButton(onClick = onNewMeal, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (hasDraft) "Start a new meal" else "New meal")
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
