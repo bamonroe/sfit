@@ -73,6 +73,22 @@ data class UserPreferences(
     @SerialName("default_weight_unit") val weightUnit: String = "kg",
 )
 
+/** One day's eaten calories from the range report. */
+@Serializable
+data class NutritionDay(
+    val date: String = "",
+    val calories: Double = 0.0,
+)
+
+@Serializable
+data class Report(
+    @SerialName("nutritionData") val nutritionData: List<NutritionDay> = emptyList(),
+)
+
+/** Kilograms → the user's preferred display unit. */
+fun kgToDisplay(kg: Double, weightUnit: String): Double =
+    if (weightUnit.startsWith("lb", ignoreCase = true)) kg * 2.2046226218 else kg
+
 // Mirrors SparkyFitness ACTIVITY_MULTIPLIERS (Frontend calorieCalculations.ts).
 private val ACTIVITY_MULTIPLIERS = mapOf(
     "not_much" to 1.2, "light" to 1.375, "moderate" to 1.55, "heavy" to 1.725,
@@ -135,6 +151,10 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** GET /user-preferences (activity level, units, …) */
     suspend fun userPreferences(): UserPreferences =
         decode(getBody("/user-preferences"), UserPreferences())
+
+    /** GET /reports?startDate=&endDate= — per-day nutrition totals over a range. */
+    suspend fun report(start: String, end: String): Report =
+        decode(getBody("/reports?startDate=$start&endDate=$end"), Report())
 
     private companion object {
         const val TAG = "SFit"
