@@ -2,6 +2,7 @@ package net.bam.sfit
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
@@ -20,7 +21,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -86,6 +89,17 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
     val mealVm: MealViewModel = viewModel(factory = factory)
     val libraryVm: LibraryViewModel = viewModel(factory = factory)
     val bulkVm: BulkAddViewModel = viewModel(factory = factory)
+
+    // System back mirrors the on-screen back arrows for the pushed screens.
+    BackHandler(enabled = screen != Screen.Main) {
+        when (screen) {
+            Screen.Scanner -> screen = Screen.Meal
+            Screen.BulkAdd -> { libraryVm.load(); screen = Screen.Main }
+            Screen.EditFood -> { editFood = null; libraryVm.load(); screen = Screen.Main }
+            Screen.EditMeal -> { editMeal = null; libraryVm.load(); screen = Screen.Main }
+            else -> screen = Screen.Main // Settings, Meal
+        }
+    }
 
     when (screen) {
         Screen.Main -> HomePager(
@@ -169,6 +183,11 @@ private fun HomePager(
 ) {
     // Page 0 = Library (swipe right), 1 = Today (start), 2 = History (swipe left).
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+    val scope = rememberCoroutineScope()
+    // System back from a side page returns to Today (rather than exiting).
+    BackHandler(enabled = pagerState.currentPage != 1) {
+        scope.launch { pagerState.animateScrollToPage(1) }
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
             when (page) {
