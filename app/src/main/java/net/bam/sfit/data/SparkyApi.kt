@@ -618,6 +618,26 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** Import a provider search result into the food DB (POST /foods). */
     suspend fun addFood(food: BarcodeFood): Boolean = importFood(food).id.isNotBlank()
 
+    /** POST /foods — create a custom (manually-entered) food. */
+    suspend fun createFood(
+        name: String,
+        brand: String?,
+        servingSize: Double,
+        servingUnit: String,
+        calories: Double,
+        protein: Double,
+        carbs: Double,
+        fat: Double,
+    ): Boolean {
+        val req = ImportFoodRequest(
+            name = name, brand = brand, source = "manual",
+            servingSize = servingSize, servingUnit = servingUnit,
+            calories = calories, protein = protein, carbs = carbs, fat = fat,
+        )
+        val saved: SavedFood = json.decodeFromString(postBody("/foods", json.encodeToString(req)))
+        return saved.id.isNotBlank()
+    }
+
     /** POST /foods — import a (provider) food into the DB; returns id + variant id. */
     private suspend fun importFood(f: BarcodeFood): SavedFood {
         val v = f.defaultVariant

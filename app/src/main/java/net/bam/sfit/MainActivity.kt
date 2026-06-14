@@ -21,6 +21,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Restaurant
@@ -55,6 +56,7 @@ import net.bam.sfit.data.DraftStore
 import net.bam.sfit.data.LibraryMeal
 import net.bam.sfit.data.Repo
 import net.bam.sfit.ui.BulkAddViewModel
+import net.bam.sfit.ui.CustomFoodScreen
 import net.bam.sfit.ui.EditFoodScreen
 import net.bam.sfit.ui.EditMealScreen
 import net.bam.sfit.ui.HistoryScreen
@@ -85,7 +87,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal, ProviderSearch, LogFood }
+private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal, ProviderSearch, LogFood, CustomFood }
 
 @Composable
 private fun AppRoot(
@@ -125,7 +127,7 @@ private fun AppRoot(
             Screen.BulkAdd -> { libraryVm.load(); screen = Screen.Main }
             Screen.EditFood -> { editFood = null; libraryVm.load(); screen = Screen.Main }
             Screen.EditMeal -> { editMeal = null; libraryVm.load(); screen = Screen.Main }
-            Screen.ProviderSearch, Screen.LogFood -> screen = Screen.Main
+            Screen.ProviderSearch, Screen.LogFood, Screen.CustomFood -> screen = Screen.Main
             else -> screen = Screen.Main // Settings, Meal
         }
     }
@@ -141,6 +143,7 @@ private fun AppRoot(
             onBulkAdd = { bulkVm.reset(); screen = Screen.BulkAdd },
             onProviderSearch = { screen = Screen.ProviderSearch },
             onLogFood = { screen = Screen.LogFood },
+            onCustomFood = { screen = Screen.CustomFood },
             onEditFood = { food -> editFood = food; screen = Screen.EditFood },
             onEditMeal = { meal -> editMeal = meal; screen = Screen.EditMeal },
             onLogged = vm::refresh,
@@ -205,6 +208,10 @@ private fun AppRoot(
             libraryVm,
             onBack = { screen = Screen.Main },
         )
+        Screen.CustomFood -> CustomFoodScreen(
+            repo,
+            onDone = { screen = Screen.Main },
+        )
     }
 }
 
@@ -220,6 +227,7 @@ private fun HomePager(
     onBulkAdd: () -> Unit,
     onProviderSearch: () -> Unit,
     onLogFood: () -> Unit,
+    onCustomFood: () -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
     onEditMeal: (LibraryMeal) -> Unit,
     onLogged: () -> Unit,
@@ -268,6 +276,7 @@ private fun HomePager(
             onNewMeal = { showAdd = false; onOpenMeal() },
             onScan = { showAdd = false; onBulkAdd() },
             onSearch = { showAdd = false; onProviderSearch() },
+            onCustomFood = { showAdd = false; onCustomFood() },
         )
     }
     if (showWeight) {
@@ -289,6 +298,7 @@ private fun AddSheet(
     onNewMeal: () -> Unit,
     onScan: () -> Unit,
     onSearch: () -> Unit,
+    onCustomFood: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -298,6 +308,7 @@ private fun AddSheet(
             AddItem(Icons.Default.Restaurant, "New meal", "Build a recipe", onNewMeal)
             AddItem(Icons.Default.QrCodeScanner, "Scan barcode", "Add a food by barcode", onScan)
             AddItem(Icons.Default.TravelExplore, "Search foods", "Find a food from a provider", onSearch)
+            AddItem(Icons.Default.Create, "Custom food", "Enter a food's nutrition manually", onCustomFood)
         }
     }
 }
