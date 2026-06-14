@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import net.bam.sfit.data.FoodEntry
 import net.bam.sfit.data.Settings
 import net.bam.sfit.data.SettingsStore
 import net.bam.sfit.data.SparkyApi
@@ -18,6 +19,7 @@ data class DayState(
     val configured: Boolean = false,
     val goalCalories: Double = 0.0,
     val consumedCalories: Double = 0.0,
+    val entries: List<FoodEntry> = emptyList(),
     val error: String? = null,
 ) {
     val remaining: Double get() = goalCalories - consumedCalories
@@ -56,6 +58,7 @@ class MainViewModel(private val store: SettingsStore) : ViewModel() {
                         configured = true,
                         goalCalories = summary.goals.calories,
                         consumedCalories = summary.consumedCalories,
+                        entries = summary.foodEntries,
                         error = null,
                     )
                 }

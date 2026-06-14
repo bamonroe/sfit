@@ -2,12 +2,20 @@ package net.bam.sfit.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restaurant
@@ -35,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.bam.sfit.data.FoodEntry
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,17 +73,103 @@ fun MainScreen(
             )
         },
     ) { padding ->
-        Box(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            when {
-                !state.configured -> UnconfiguredMessage(onOpenSettings)
-                state.loading && !state.hasGoal -> CircularProgressIndicator()
-                state.error != null -> ErrorMessage(state.error!!) { vm.refresh() }
-                else -> RemainingCalories(state)
+        when {
+            !state.configured -> Centered(padding) { UnconfiguredMessage(onOpenSettings) }
+            state.loading && !state.hasGoal -> Centered(padding) { CircularProgressIndicator() }
+            state.error != null -> Centered(padding) { ErrorMessage(state.error!!) { vm.refresh() } }
+            else -> TodayContent(state, Modifier.fillMaxSize().padding(padding))
+        }
+    }
+}
+
+@Composable
+private fun Centered(padding: PaddingValues, content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+private val MEAL_ORDER = listOf("breakfast", "lunch", "snacks", "dinner")
+
+@Composable
+private fun TodayContent(state: DayState, modifier: Modifier) {
+    LazyColumn(modifier = modifier) {
+        item {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) { RemainingCalories(state) }
+        }
+
+        if (state.entries.isEmpty()) {
+            item {
+                Text(
+                    "Nothing logged yet today.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    textAlign = TextAlign.Center,
+                )
+            }
+        } else {
+            val byMeal = state.entries.groupBy { (it.mealType ?: "other").lowercase() }
+            val keys = MEAL_ORDER.filter { it in byMeal } + byMeal.keys.filter { it !in MEAL_ORDER }
+            keys.forEach { meal ->
+                val list = byMeal.getValue(meal)
+                item { MealHeader(meal, list.sumOf { it.consumedCalories }) }
+                items(list) { EntryRow(it) }
             }
         }
+    }
+}
+
+@Composable
+private fun MealHeader(meal: String, kcal: Double) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            meal.replaceFirstChar { it.uppercase() },
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            "${kcal.roundToInt()} kcal",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun EntryRow(e: FoodEntry) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(e.foodName ?: "(unnamed)", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                buildString {
+                    val q = e.quantity
+                    append(if (q == q.toLong().toDouble()) q.toLong().toString() else "%.1f".format(q))
+                    append(" ").append(e.unit)
+                    e.brandName?.let { append("  ·  ").append(it) }
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            "${e.consumedCalories.roundToInt()} kcal",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

@@ -24,9 +24,11 @@ data class FoodEntry(
     val carbs: Double = 0.0,
     val fat: Double = 0.0,
     val quantity: Double = 0.0,
+    val unit: String = "g",
     @SerialName("serving_size") val servingSize: Double = 0.0,
     @SerialName("meal_type") val mealType: String? = null,
     @SerialName("food_name") val foodName: String? = null,
+    @SerialName("brand_name") val brandName: String? = null,
 ) {
     val consumedCalories: Double get() = if (servingSize > 0) calories * quantity / servingSize else 0.0
 }
