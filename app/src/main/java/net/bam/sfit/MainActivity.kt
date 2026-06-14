@@ -33,7 +33,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import net.bam.sfit.data.BarcodeFood
+import net.bam.sfit.data.DayCacheStore
 import net.bam.sfit.data.DraftStore
+import net.bam.sfit.data.HistoryCacheStore
 import net.bam.sfit.data.LibraryCacheStore
 import net.bam.sfit.data.LibraryMeal
 import net.bam.sfit.data.SettingsStore
@@ -59,8 +61,10 @@ class MainActivity : ComponentActivity() {
         val store = SettingsStore(applicationContext)
         val draftStore = DraftStore(applicationContext)
         val libraryCache = LibraryCacheStore(applicationContext)
+        val dayCache = DayCacheStore(applicationContext)
+        val historyCache = HistoryCacheStore(applicationContext)
         setContent {
-            SFitTheme { AppRoot(store, draftStore, libraryCache) }
+            SFitTheme { AppRoot(store, draftStore, libraryCache, dayCache, historyCache) }
         }
     }
 }
@@ -68,17 +72,23 @@ class MainActivity : ComponentActivity() {
 private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal }
 
 @Composable
-private fun AppRoot(store: SettingsStore, draftStore: DraftStore, libraryCache: LibraryCacheStore) {
+private fun AppRoot(
+    store: SettingsStore,
+    draftStore: DraftStore,
+    libraryCache: LibraryCacheStore,
+    dayCache: DayCacheStore,
+    historyCache: HistoryCacheStore,
+) {
     var screen by remember { mutableStateOf(Screen.Main) }
     var editFood by remember { mutableStateOf<BarcodeFood?>(null) }
     var editMeal by remember { mutableStateOf<LibraryMeal?>(null) }
 
-    val factory = remember(store, draftStore, libraryCache) {
+    val factory = remember(store, draftStore, libraryCache, dayCache, historyCache) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
-                modelClass.isAssignableFrom(MainViewModel::class.java) -> MainViewModel(store)
-                modelClass.isAssignableFrom(HistoryViewModel::class.java) -> HistoryViewModel(store)
+                modelClass.isAssignableFrom(MainViewModel::class.java) -> MainViewModel(store, dayCache)
+                modelClass.isAssignableFrom(HistoryViewModel::class.java) -> HistoryViewModel(store, historyCache)
                 modelClass.isAssignableFrom(MealViewModel::class.java) -> MealViewModel(store, draftStore)
                 modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(store, libraryCache)
                 modelClass.isAssignableFrom(BulkAddViewModel::class.java) -> BulkAddViewModel(store)

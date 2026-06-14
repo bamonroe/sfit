@@ -74,10 +74,11 @@ fun MainScreen(
             )
         },
     ) { padding ->
+        val hasData = state.hasGoal || state.entries.isNotEmpty()
         when {
             !state.configured -> Centered(padding) { UnconfiguredMessage(onOpenSettings) }
-            state.loading && !state.hasGoal -> Centered(padding) { CircularProgressIndicator() }
-            state.error != null -> Centered(padding) { ErrorMessage(state.error!!) { vm.refresh() } }
+            !hasData && state.loading -> Centered(padding) { CircularProgressIndicator() }
+            !hasData && state.error != null -> Centered(padding) { ErrorMessage(state.error!!) { vm.refresh() } }
             else -> TodayContent(state, onRefresh = vm::refresh, Modifier.fillMaxSize().padding(padding))
         }
     }

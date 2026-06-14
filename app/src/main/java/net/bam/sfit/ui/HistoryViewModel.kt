@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import net.bam.sfit.data.CachedHistory
+import net.bam.sfit.data.CachedHistoryRow
+import net.bam.sfit.data.HistoryCacheStore
 import net.bam.sfit.data.SettingsStore
 import net.bam.sfit.data.SparkyApi
 import net.bam.sfit.data.UserPreferences
@@ -34,7 +37,10 @@ data class HistoryState(
     val error: String? = null,
 )
 
-class HistoryViewModel(private val store: SettingsStore) : ViewModel() {
+class HistoryViewModel(
+    private val store: SettingsStore,
+    private val cache: HistoryCacheStore,
+) : ViewModel() {
     private val _state = MutableStateFlow(HistoryState())
     val state: StateFlow<HistoryState> = _state.asStateFlow()
 
@@ -44,18 +50,29 @@ class HistoryViewModel(private val store: SettingsStore) : ViewModel() {
 
     fun selectGranularity(g: Granularity) {
         if (g == _state.value.granularity) return
-        _state.update { it.copy(granularity = g) }
+        _state.update { it.copy(granularity = g, rows = emptyList()) }
         load()
     }
 
     fun load() {
         viewModelScope.launch {
+            val g = _state.value.granularity
+            // 1) Show cached rows for this granularity instantly.
+            cache.load()?.let { c ->
+                c.byGranularity[g.name]?.let { cachedRows ->
+                    _state.update {
+                        it.copy(unit = c.unit, rows = cachedRows.map { r ->
+                            HistoryRow(r.label, r.weight, r.weightDelta, r.deficit)
+                        })
+                    }
+                }
+            }
+
             val settings = store.settings.first()
             if (!settings.isConfigured) {
-                _state.update { it.copy(error = "Not configured", rows = emptyList()) }
+                _state.update { it.copy(loading = false, error = if (it.rows.isEmpty()) "Not configured" else null) }
                 return@launch
             }
-            val g = _state.value.granularity
             _state.update { it.copy(loading = true, error = null) }
             try {
                 val api = SparkyApi(settings.baseUrl, settings.apiKey)
@@ -67,8 +84,6 @@ class HistoryViewModel(private val store: SettingsStore) : ViewModel() {
                 }
 
                 val prefs = runCatching { api.userPreferences() }.getOrDefault(UserPreferences())
-                // Maintenance ≈ today's BMR × activity multiplier (BMR drifts slowly
-                // with weight, so a single value is a fine approximation for the trend).
                 val bmr = runCatching { api.dailySummary(today.toString()).calorieBalance.bmr }
                     .getOrDefault(0.0)
                 val maintenance = maintenanceCalories(bmr, prefs.activityLevel)
@@ -78,11 +93,21 @@ class HistoryViewModel(private val store: SettingsStore) : ViewModel() {
                 val report = api.report(start.toString(), today.toString())
 
                 val rows = buildRows(g, checkins, report, maintenance, prefs.weightUnit)
-                _state.update {
-                    it.copy(loading = false, rows = rows, unit = unitLabel(prefs.weightUnit), error = null)
-                }
+                val unit = unitLabel(prefs.weightUnit)
+                _state.update { it.copy(loading = false, rows = rows, unit = unit, error = null) }
+
+                // Re-cache: merge this granularity's rows into the stored map.
+                val existing = cache.load() ?: CachedHistory()
+                cache.save(
+                    existing.copy(
+                        unit = unit,
+                        byGranularity = existing.byGranularity + (g.name to rows.map {
+                            CachedHistoryRow(it.label, it.weight, it.weightDelta, it.deficit)
+                        }),
+                    ),
+                )
             } catch (e: Exception) {
-                _state.update { it.copy(loading = false, error = e.message ?: "Failed to load") }
+                _state.update { it.copy(loading = false, error = if (it.rows.isEmpty()) (e.message ?: "Failed to load") else null) }
             }
         }
     }
