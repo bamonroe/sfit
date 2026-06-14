@@ -73,6 +73,7 @@ fun LibraryScreen(
     val snackbar = remember { SnackbarHostState() }
     var pickMealFor by remember { mutableStateOf<BarcodeFood?>(null) }
     var logFor by remember { mutableStateOf<BarcodeFood?>(null) }
+    var logMealFor by remember { mutableStateOf<LibraryMeal?>(null) }
 
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); vm.clearMessage() }
@@ -179,8 +180,17 @@ fun LibraryScreen(
         MealDetailSheet(
             meal = meal,
             onDismiss = vm::closeMealDetail,
+            onLog = { logMealFor = meal; vm.closeMealDetail() },
             onEdit = { onEditMeal(meal); vm.closeMealDetail() },
             onDelete = { vm.deleteMeal(meal.id) },
+        )
+    }
+
+    logMealFor?.let { meal ->
+        LogMealDialog(
+            meal = meal,
+            onConfirm = { grams, mealType -> vm.logMeal(meal, grams, mealType, onLogged); logMealFor = null },
+            onDismiss = { logMealFor = null },
         )
     }
 }
@@ -209,6 +219,7 @@ private fun LibrarySearchField(query: String, onQuery: (String) -> Unit) {
 private fun MealDetailSheet(
     meal: LibraryMeal,
     onDismiss: () -> Unit,
+    onLog: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -253,11 +264,15 @@ private fun MealDetailSheet(
                 }
             }
 
-            Row(
+            Button(
+                onClick = onLog,
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+            ) { Text("Log to today") }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Button(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("Edit") }
+                OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("Edit") }
                 OutlinedButton(
                     onClick = { confirmDelete = true },
                     modifier = Modifier.weight(1f),
@@ -419,6 +434,64 @@ internal fun LogFoodDialog(
         },
         confirmButton = {
             TextButton(enabled = grams > 0, onClick = { onConfirm(grams, meal) }) { Text("Log") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun LogMealDialog(
+    meal: LibraryMeal,
+    onConfirm: (Double, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val meals = listOf("breakfast", "lunch", "snacks", "dinner")
+    val defaultMeal = remember {
+        when (java.time.LocalTime.now().hour) {
+            in 0..10 -> "breakfast"
+            in 11..14 -> "lunch"
+            in 15..16 -> "snacks"
+            else -> "dinner"
+        }
+    }
+    var mealType by remember { mutableStateOf(defaultMeal) }
+    var qty by remember { mutableStateOf(fmt(meal.totalGrams)) }
+    val grams = qty.toDoubleOrNull() ?: 0.0
+    val total = meal.totalGrams.coerceAtLeast(1.0)
+    val kcal = meal.totalCalories * grams / total
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Log ${meal.name}") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = qty,
+                    onValueChange = { qty = it.filter { c -> c.isDigit() || c == '.' } },
+                    label = { Text("grams") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                Text(
+                    "${kcal.roundToInt()} kcal  ·  of ${fmt(meal.totalGrams)} g recipe",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Spacer(Modifier.height(12.dp))
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    meals.forEachIndexed { i, m ->
+                        SegmentedButton(
+                            selected = mealType == m,
+                            onClick = { mealType = m },
+                            shape = SegmentedButtonDefaults.itemShape(i, meals.size),
+                        ) { Text(m.replaceFirstChar { it.uppercase() }, maxLines = 1) }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = grams > 0, onClick = { onConfirm(grams, mealType) }) { Text("Log") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

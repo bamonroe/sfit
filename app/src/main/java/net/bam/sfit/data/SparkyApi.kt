@@ -225,6 +225,25 @@ private data class CreateMealRequest(
 private data class CreatedMeal(val id: String = "")
 
 @Serializable
+private data class LogMealFoodReq(
+    @SerialName("food_id") val foodId: String,
+    @SerialName("variant_id") val variantId: String,
+    val quantity: Double,
+    val unit: String = "g",
+)
+
+@Serializable
+private data class LogMealRequest(
+    @SerialName("meal_template_id") val mealTemplateId: String,
+    @SerialName("meal_type") val mealType: String,
+    @SerialName("entry_date") val entryDate: String,
+    val name: String,
+    val quantity: Double,
+    val unit: String = "g",
+    val foods: List<LogMealFoodReq>,
+)
+
+@Serializable
 private data class CheckInRequest(
     @SerialName("entry_date") val entryDate: String,
     val weight: Double,
@@ -439,6 +458,20 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** DELETE /food-entry-meals/{id} — remove a logged meal (and its entries). */
     suspend fun deleteFoodEntryMeal(id: String) {
         sendBody("DELETE", "/food-entry-meals/$id", null)
+    }
+
+    /** POST /food-entry-meals — log a meal (recipe) to the diary. [grams] is the
+     *  total logged; the recipe's ingredients scale proportionally. */
+    suspend fun logMeal(meal: LibraryMeal, grams: Double, mealType: String, date: String) {
+        val total = meal.totalGrams.coerceAtLeast(1.0)
+        val scale = grams / total
+        val foods = meal.foods.map {
+            LogMealFoodReq(it.foodId, it.variantId, it.quantity * scale, it.unit.ifBlank { "g" })
+        }
+        sendBody(
+            "POST", "/food-entry-meals",
+            json.encodeToString(LogMealRequest(meal.id, mealType, date, meal.name, grams, "g", foods)),
+        )
     }
 
     /** POST /food-entries — log a food to the diary. */

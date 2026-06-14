@@ -131,6 +131,21 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
         }
     }
 
+    /** Log a meal (recipe) to today's diary, then refresh + notify. */
+    fun logMeal(meal: LibraryMeal, grams: Double, mealType: String, onLogged: () -> Unit) {
+        viewModelScope.launch {
+            val s = repo.store.settings.first()
+            try {
+                SparkyApi(s.baseUrl, s.apiKey).logMeal(meal, grams, mealType, LocalDate.now().toString())
+                ui.update { it.copy(mealDetail = null, message = "Logged ${meal.name}") }
+                repo.refresh()
+                onLogged()
+            } catch (e: Exception) {
+                ui.update { it.copy(message = e.message ?: "Log failed") }
+            }
+        }
+    }
+
     fun deleteMeal(id: String) {
         viewModelScope.launch {
             val s = repo.store.settings.first()
