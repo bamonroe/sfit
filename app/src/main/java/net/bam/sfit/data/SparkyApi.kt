@@ -192,6 +192,27 @@ data class ResolvedIngredient(
 /** One ingredient line for creating a meal. */
 data class MealLine(val foodId: String, val variantId: String, val grams: Double)
 
+// ---- Library (foods + meals listing) ----
+
+@Serializable
+data class LibraryFood(
+    val id: String = "",
+    val name: String = "",
+    val brand: String? = null,
+)
+
+@Serializable
+data class FoodsPage(
+    val foods: List<LibraryFood> = emptyList(),
+    val totalCount: Int = 0,
+)
+
+@Serializable
+data class LibraryMeal(
+    val id: String = "",
+    val name: String = "",
+)
+
 // Mirrors SparkyFitness ACTIVITY_MULTIPLIERS (Frontend calorieCalculations.ts).
 private val ACTIVITY_MULTIPLIERS = mapOf(
     "not_much" to 1.2, "light" to 1.375, "moderate" to 1.55, "heavy" to 1.725,
@@ -281,6 +302,14 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** GET /reports?startDate=&endDate= — per-day nutrition totals over a range. */
     suspend fun report(start: String, end: String): Report =
         decode(getBody("/reports?startDate=$start&endDate=$end"), Report())
+
+    /** GET /foods/foods-paginated — the user's foods. */
+    suspend fun foods(page: Int = 1, perPage: Int = 200): FoodsPage =
+        decode(getBody("/foods/foods-paginated?page=$page&itemsPerPage=$perPage"), FoodsPage())
+
+    /** GET /meals?filter=mine — the user's recipes. */
+    suspend fun meals(): List<LibraryMeal> =
+        decode(getBody("/meals?filter=mine"), emptyList())
 
     /** GET /foods/barcode/{barcode} — local DB first, then OpenFoodFacts fallback. */
     suspend fun barcodeLookup(barcode: String): BarcodeResult =

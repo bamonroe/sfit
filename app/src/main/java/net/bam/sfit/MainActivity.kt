@@ -4,18 +4,26 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import net.bam.sfit.data.DraftStore
 import net.bam.sfit.data.SettingsStore
+import net.bam.sfit.ui.BulkAddViewModel
 import net.bam.sfit.ui.HistoryScreen
 import net.bam.sfit.ui.HistoryViewModel
+import net.bam.sfit.ui.LibraryScreen
+import net.bam.sfit.ui.LibraryViewModel
 import net.bam.sfit.ui.MainScreen
 import net.bam.sfit.ui.MainViewModel
 import net.bam.sfit.ui.MealScreen
@@ -36,7 +44,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Main, Settings, History, Meal, Scanner }
+private enum class Screen { Main, Settings, History, Meal, Scanner, BulkAdd }
 
 @Composable
 private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
@@ -49,6 +57,8 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
                 modelClass.isAssignableFrom(MainViewModel::class.java) -> MainViewModel(store)
                 modelClass.isAssignableFrom(HistoryViewModel::class.java) -> HistoryViewModel(store)
                 modelClass.isAssignableFrom(MealViewModel::class.java) -> MealViewModel(store, draftStore)
+                modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(store)
+                modelClass.isAssignableFrom(BulkAddViewModel::class.java) -> BulkAddViewModel(store)
                 else -> throw IllegalArgumentException("Unknown ViewModel $modelClass")
             } as T
         }
@@ -56,13 +66,17 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
     val vm: MainViewModel = viewModel(factory = factory)
     val historyVm: HistoryViewModel = viewModel(factory = factory)
     val mealVm: MealViewModel = viewModel(factory = factory)
+    val libraryVm: LibraryViewModel = viewModel(factory = factory)
+    val bulkVm: BulkAddViewModel = viewModel(factory = factory)
 
     when (screen) {
-        Screen.Main -> MainScreen(
-            vm,
+        Screen.Main -> HomePager(
+            mainVm = vm,
+            libraryVm = libraryVm,
             onOpenSettings = { screen = Screen.Settings },
             onOpenHistory = { historyVm.load(); screen = Screen.History },
             onOpenMeal = { screen = Screen.Meal },
+            onBulkAdd = { bulkVm.reset(); screen = Screen.BulkAdd },
         )
         Screen.Settings -> SettingsScreen(store, onDone = { screen = Screen.Main })
         Screen.History -> HistoryScreen(historyVm, onBack = { screen = Screen.Main })
@@ -71,6 +85,47 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
             onBack = { screen = Screen.Main },
             onScan = { screen = Screen.Scanner },
         )
-        Screen.Scanner -> ScannerScreen(mealVm, onDone = { screen = Screen.Meal })
+        Screen.Scanner -> {
+            val s by mealVm.state.collectAsStateWithLifecycle()
+            ScannerScreen(
+                onBarcode = mealVm::addByBarcode,
+                onDone = { screen = Screen.Meal },
+                title = "Scan into meal",
+                statusText = s.error ?: s.message
+                    ?: if (s.resolving) "Looking up…" else "Point at a barcode",
+                countText = "${s.draft.ingredients.size} in meal",
+            )
+        }
+        Screen.BulkAdd -> {
+            val s by bulkVm.state.collectAsStateWithLifecycle()
+            ScannerScreen(
+                onBarcode = bulkVm::addByBarcode,
+                onDone = { libraryVm.load(); screen = Screen.Main },
+                title = "Bulk add foods",
+                statusText = s.error ?: s.message
+                    ?: if (s.resolving) "Looking up…" else "Point at a barcode",
+                countText = "${s.count} added",
+            )
+        }
+    }
+}
+
+/** Today ⟷ Library swipe pager. Swipe right from Today reveals the Library. */
+@Composable
+private fun HomePager(
+    mainVm: MainViewModel,
+    libraryVm: LibraryViewModel,
+    onOpenSettings: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenMeal: () -> Unit,
+    onBulkAdd: () -> Unit,
+) {
+    // Page 0 = Library (left), page 1 = Today (right); start on Today.
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 2 })
+    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        when (page) {
+            0 -> LibraryScreen(libraryVm, onBulkAdd = onBulkAdd)
+            else -> MainScreen(mainVm, onOpenSettings, onOpenHistory, onOpenMeal)
+        }
     }
 }

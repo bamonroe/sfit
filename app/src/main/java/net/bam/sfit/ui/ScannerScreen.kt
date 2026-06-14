@@ -44,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -53,10 +52,19 @@ import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
+/**
+ * Reusable batch barcode scanner. [onBarcode] fires once per product (debounced);
+ * [statusText] and [countText] are the live overlay lines supplied by the caller.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScannerScreen(vm: MealViewModel, onDone: () -> Unit) {
-    val state by vm.state.collectAsStateWithLifecycle()
+fun ScannerScreen(
+    onBarcode: (String) -> Unit,
+    onDone: () -> Unit,
+    title: String,
+    statusText: String,
+    countText: String,
+) {
     val context = LocalContext.current
 
     var granted by remember {
@@ -73,7 +81,7 @@ fun ScannerScreen(vm: MealViewModel, onDone: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scan barcodes") },
+                title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Done")
@@ -84,7 +92,7 @@ fun ScannerScreen(vm: MealViewModel, onDone: () -> Unit) {
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (granted) {
-                CameraScanner(onBarcode = vm::addByBarcode)
+                CameraScanner(onBarcode = onBarcode)
             } else {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(32.dp),
@@ -111,14 +119,9 @@ fun ScannerScreen(vm: MealViewModel, onDone: () -> Unit) {
                     .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                val count = state.draft.ingredients.size
+                Text(text = statusText, color = Color.White)
                 Text(
-                    text = (state.message ?: state.error)?.takeIf { it.isNotBlank() }
-                        ?: if (state.resolving) "Looking up…" else "Point at a barcode",
-                    color = Color.White,
-                )
-                Text(
-                    "$count item${if (count == 1) "" else "s"} in meal",
+                    countText,
                     color = Color.White.copy(alpha = 0.8f),
                     style = MaterialTheme.typography.bodySmall,
                 )
