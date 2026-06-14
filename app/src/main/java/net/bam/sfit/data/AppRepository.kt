@@ -214,8 +214,10 @@ class AppRepository(
         }
     }
 
-    /** Change a diary entry's quantity, then refresh. */
+    /** Change a diary entry's quantity. Updates Today locally at once, then
+     *  confirms against the server (reverting to server truth on failure). */
     fun updateEntry(entry: FoodEntry, newQuantity: Double, onError: (String) -> Unit = {}) {
+        setEntries(day.value.entries.map { if (it.id == entry.id) it.copy(quantity = newQuantity) else it })
         scope.launch {
             val s = store.settings.first()
             if (!s.isConfigured) return@launch
@@ -228,25 +230,35 @@ class AppRepository(
                     unit = entry.unit,
                     date = entry.entryDate.ifBlank { LocalDate.now().toString() },
                 )
-                refresh()
             } catch (e: Exception) {
                 onError(e.message ?: "Update failed")
             }
+            refresh() // reconcile with the server (success or revert)
         }
     }
 
-    /** Delete a diary entry, then refresh. */
+    /** Delete a diary entry. Removes it from Today locally at once, then
+     *  confirms against the server (reverting to server truth on failure). */
     fun deleteEntry(entry: FoodEntry, onError: (String) -> Unit = {}) {
+        setEntries(day.value.entries.filterNot { it.id == entry.id })
         scope.launch {
             val s = store.settings.first()
             if (!s.isConfigured) return@launch
             try {
                 SparkyApi(s.baseUrl, s.apiKey).deleteFoodEntry(entry.id)
-                refresh()
             } catch (e: Exception) {
                 onError(e.message ?: "Delete failed")
             }
+            refresh() // reconcile with the server (success or revert)
         }
+    }
+
+    /** Optimistically swap Today's entries and recompute consumed calories. */
+    private fun setEntries(entries: List<FoodEntry>) {
+        _day.value = _day.value.copy(
+            entries = entries,
+            consumedCalories = entries.sumOf { it.consumedCalories },
+        )
     }
 
     /** Aggregate the last [USAGE_WINDOW_DAYS] days of diary entries into per-food usage. */
