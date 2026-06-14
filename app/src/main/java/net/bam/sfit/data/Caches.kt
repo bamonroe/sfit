@@ -43,6 +43,7 @@ data class CachedHistoryRow(
     val weight: Double? = null,
     val weightDelta: Double? = null,
     val deficit: Double? = null,
+    val date: String? = null,
 )
 
 @Serializable

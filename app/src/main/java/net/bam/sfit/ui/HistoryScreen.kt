@@ -1,20 +1,29 @@
 package net.bam.sfit.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -53,6 +62,9 @@ private val lossGreen = Color(0xFF2ECC71)
 fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
     val state by vm.state.collectAsStateWithLifecycle()
     var showLogWeight by remember { mutableStateOf(false) }
+    // Reset expansion when the granularity changes.
+    var expanded by remember(state.granularity) { mutableStateOf<String?>(null) }
+    var editing by remember { mutableStateOf<HistoryRow?>(null) }
 
     if (showLogWeight) {
         LogWeightDialog(
@@ -60,6 +72,17 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
             initial = state.rows.firstOrNull { it.weight != null }?.weight,
             onConfirm = { vm.logWeight(it); showLogWeight = false },
             onDismiss = { showLogWeight = false },
+        )
+    }
+
+    editing?.let { row ->
+        LogWeightDialog(
+            unit = state.unit,
+            initial = row.weight,
+            onConfirm = { vm.logWeight(it, row.date); editing = null },
+            onDismiss = { editing = null },
+            title = "Edit weight",
+            subtitle = row.label,
         )
     }
 
@@ -104,7 +127,15 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
                         modifier = Modifier.padding(24.dp),
                     )
                     else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(state.rows, key = { it.label }) { HistoryRowItem(it) }
+                        items(state.rows, key = { it.label }) { row ->
+                            HistoryRowItem(
+                                row = row,
+                                expanded = expanded == row.label,
+                                unit = state.unit,
+                                onToggle = { expanded = if (expanded == row.label) null else row.label },
+                                onEdit = { editing = row },
+                            )
+                        }
                     }
                 }
             }
@@ -143,15 +174,71 @@ private fun TableHeader(g: Granularity, unit: String) {
 }
 
 @Composable
-private fun HistoryRowItem(row: HistoryRow) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun HistoryRowItem(
+    row: HistoryRow,
+    expanded: Boolean,
+    unit: String,
+    onToggle: () -> Unit,
+    onEdit: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BodyCell(row.label, 1.5f, TextAlign.Start)
+            BodyCell(row.weight?.let { "%.1f".format(it) } ?: "—", 1.1f, TextAlign.End)
+            DeltaCell(row.weightDelta, 0.9f)
+            DeficitCell(row.deficit, 1.0f)
+        }
+        if (expanded) HistoryRowDetail(row, unit, onEdit)
+    }
+}
+
+@Composable
+private fun HistoryRowDetail(row: HistoryRow, unit: String, onEdit: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        BodyCell(row.label, 1.5f, TextAlign.Start)
-        BodyCell(row.weight?.let { "%.1f".format(it) } ?: "—", 1.1f, TextAlign.End)
-        DeltaCell(row.weightDelta, 0.9f)
-        DeficitCell(row.deficit, 1.0f)
+        row.weight?.let { w ->
+            val text = if (unit.startsWith("lb")) {
+                "%.1f lb  (%.1f kg)".format(w, w / 2.2046226218)
+            } else {
+                "%.1f kg  (%.1f lb)".format(w, w * 2.2046226218)
+            }
+            DetailLine("Weight", text)
+        }
+        row.weightDelta?.let { DetailLine("Change", "%+.1f %s vs previous".format(it, unit)) }
+        row.deficit?.let { DetailLine("Est. deficit", "${it.roundToInt()} kcal/day") }
+
+        if (row.date != null) {
+            FilledTonalButton(onClick = onEdit, modifier = Modifier.padding(top = 4.dp)) {
+                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Edit weight")
+            }
+        } else {
+            Text(
+                "Switch to Daily to edit a specific weigh-in.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetailLine(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -161,6 +248,8 @@ private fun LogWeightDialog(
     initial: Double?,
     onConfirm: (Double) -> Unit,
     onDismiss: () -> Unit,
+    title: String = "Log weight",
+    subtitle: String = "Today's weigh-in.",
 ) {
     var text by remember { mutableStateOf(initial?.let { "%.1f".format(it) } ?: "") }
     val value = text.trim().toDoubleOrNull()
@@ -168,11 +257,11 @@ private fun LogWeightDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Log weight") },
+        title = { Text(title) },
         text = {
             Column {
                 Text(
-                    "Today's weigh-in.",
+                    subtitle,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

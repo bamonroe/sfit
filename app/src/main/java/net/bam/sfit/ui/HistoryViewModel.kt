@@ -42,6 +42,8 @@ class HistoryViewModel(private val repo: AppRepository) : ViewModel() {
     /** Pull-to-refresh: reload the whole app's data. */
     fun load() = repo.refresh()
 
-    /** Log today's body weight (entered in the current display unit). */
-    fun logWeight(displayValue: Double) = repo.logWeight(displayValue)
+    /** Log/edit a day's body weight (entered in the current display unit).
+     *  Defaults to today; pass an ISO date to edit a past weigh-in. */
+    fun logWeight(displayValue: Double, date: String? = null) =
+        if (date != null) repo.logWeight(displayValue, date) else repo.logWeight(displayValue)
 }

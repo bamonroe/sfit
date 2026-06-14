@@ -29,6 +29,9 @@ data class HistoryRow(
     val weight: Double?,        // in display unit
     val weightDelta: Double?,   // vs the previous period, display unit
     val deficit: Double?,       // kcal; per-day for Daily, avg/day for Weekly/Monthly
+    // ISO date of the underlying weigh-in — set only for Daily rows (a single
+    // date), so that day's check-in can be edited. Null for week/month aggregates.
+    val date: String? = null,
 )
 
 /** How often (count) and how recently (lastDate, ISO) a food was logged. */
@@ -99,7 +102,7 @@ class AppRepository(
                 _history.value = HistoryData(
                     c.unit,
                     c.byGranularity.mapValues { (_, rows) ->
-                        rows.map { HistoryRow(it.label, it.weight, it.weightDelta, it.deficit) }
+                        rows.map { HistoryRow(it.label, it.weight, it.weightDelta, it.deficit, it.date) }
                     },
                 )
             }
@@ -188,7 +191,7 @@ class AppRepository(
                         CachedHistory(
                             unitLabel(prefs.weightUnit),
                             byGran.mapValues { (_, rows) ->
-                                rows.map { CachedHistoryRow(it.label, it.weight, it.weightDelta, it.deficit) }
+                                rows.map { CachedHistoryRow(it.label, it.weight, it.weightDelta, it.deficit, it.date) }
                             },
                         ),
                     )
@@ -211,14 +214,19 @@ class AppRepository(
         }
     }
 
-    /** Upsert today's body weight (entered in the display unit), then refresh. */
-    fun logWeight(displayValue: Double, onError: (String) -> Unit = {}) {
+    /** Upsert a day's body weight (entered in the display unit), then refresh.
+     *  Defaults to today; pass an ISO date to edit a past weigh-in. */
+    fun logWeight(
+        displayValue: Double,
+        date: String = LocalDate.now().toString(),
+        onError: (String) -> Unit = {},
+    ) {
         scope.launch {
             val s = store.settings.first()
             if (!s.isConfigured) return@launch
             try {
                 SparkyApi(s.baseUrl, s.apiKey)
-                    .logWeight(LocalDate.now().toString(), displayToKg(displayValue, weightUnit))
+                    .logWeight(date, displayToKg(displayValue, weightUnit))
                 refresh()
             } catch (e: Exception) {
                 onError(e.message ?: "Failed to log weight")
@@ -372,6 +380,8 @@ private fun buildRows(
             weight = avgWeight,
             weightDelta = prevWeight?.let { avgWeight - it },
             deficit = deficit,
+            // Only a single-day row maps to one editable check-in.
+            date = if (g == Granularity.Daily) key.toString() else null,
         )
     }
     return rows.reversed() // newest first
