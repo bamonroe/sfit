@@ -3,6 +3,8 @@ package net.bam.sfit.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,18 +22,26 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -40,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,6 +66,16 @@ fun MainScreen(
     onOpenMeal: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    var editing by remember { mutableStateOf<FoodEntry?>(null) }
+
+    editing?.let { entry ->
+        EntryEditSheet(
+            entry = entry,
+            onSave = { qty -> vm.editEntry(entry, qty); editing = null },
+            onDelete = { vm.deleteEntry(entry); editing = null },
+            onDismiss = { editing = null },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -79,7 +100,7 @@ fun MainScreen(
             !state.configured -> Centered(padding) { UnconfiguredMessage(onOpenSettings) }
             !hasData && state.loading -> Centered(padding) { CircularProgressIndicator() }
             !hasData && state.error != null -> Centered(padding) { ErrorMessage(state.error!!) { vm.refresh() } }
-            else -> TodayContent(state, onRefresh = vm::refresh, Modifier.fillMaxSize().padding(padding))
+            else -> TodayContent(state, onRefresh = vm::refresh, onEntryClick = { editing = it }, Modifier.fillMaxSize().padding(padding))
         }
     }
 }
@@ -96,7 +117,12 @@ private val MEAL_ORDER = listOf("breakfast", "lunch", "snacks", "dinner")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TodayContent(state: DayState, onRefresh: () -> Unit, modifier: Modifier) {
+private fun TodayContent(
+    state: DayState,
+    onRefresh: () -> Unit,
+    onEntryClick: (FoodEntry) -> Unit,
+    modifier: Modifier,
+) {
     PullToRefreshBox(isRefreshing = state.loading, onRefresh = onRefresh, modifier = modifier) {
         LazyColumn(modifier = Modifier.fillMaxSize()) {
         item {
@@ -121,7 +147,7 @@ private fun TodayContent(state: DayState, onRefresh: () -> Unit, modifier: Modif
             keys.forEach { meal ->
                 val list = byMeal.getValue(meal)
                 item { MealHeader(meal, list.sumOf { it.consumedCalories }) }
-                items(list) { EntryRow(it) }
+                items(list) { EntryRow(it, onClick = { onEntryClick(it) }) }
             }
         }
         }
@@ -151,9 +177,9 @@ private fun MealHeader(meal: String, kcal: Double) {
 }
 
 @Composable
-private fun EntryRow(e: FoodEntry) {
+private fun EntryRow(e: FoodEntry, onClick: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -175,6 +201,63 @@ private fun EntryRow(e: FoodEntry) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EntryEditSheet(
+    entry: FoodEntry,
+    onSave: (Double) -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState()
+    var text by remember {
+        val q = entry.quantity
+        mutableStateOf(if (q == q.toLong().toDouble()) q.toLong().toString() else "%.1f".format(q))
+    }
+    val qty = text.trim().toDoubleOrNull()
+    val valid = qty != null && qty > 0
+    val kcal = if (valid && entry.servingSize > 0) entry.calories * qty!! / entry.servingSize else 0.0
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(entry.foodName ?: "(unnamed)", style = MaterialTheme.typography.titleLarge)
+            entry.brandName?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Quantity (${entry.unit})") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                "${kcal.roundToInt()} kcal",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onDelete,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Delete") }
+                Button(
+                    onClick = { qty?.let(onSave) },
+                    enabled = valid,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Save") }
+            }
+        }
     }
 }
 

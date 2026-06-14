@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit
  */
 @Serializable
 data class FoodEntry(
+    val id: String = "",
     val calories: Double = 0.0,
     val protein: Double = 0.0,
     val carbs: Double = 0.0,
@@ -30,6 +31,7 @@ data class FoodEntry(
     @SerialName("food_name") val foodName: String? = null,
     @SerialName("brand_name") val brandName: String? = null,
     @SerialName("food_id") val foodId: String = "",
+    @SerialName("variant_id") val variantId: String = "",
     @SerialName("entry_date") val entryDate: String = "",
 ) {
     val consumedCalories: Double get() = if (servingSize > 0) calories * quantity / servingSize else 0.0
@@ -189,6 +191,15 @@ private data class CreatedMeal(val id: String = "")
 private data class CheckInRequest(
     @SerialName("entry_date") val entryDate: String,
     val weight: Double,
+)
+
+@Serializable
+private data class UpdateFoodEntryRequest(
+    val quantity: Double,
+    @SerialName("variant_id") val variantId: String? = null,
+    @SerialName("meal_type") val mealType: String,
+    val unit: String,
+    @SerialName("entry_date") val entryDate: String,
 )
 
 @Serializable
@@ -401,6 +412,28 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** POST /measurements/check-in — upsert a day's body weight (kg). */
     suspend fun logWeight(date: String, kg: Double) {
         sendBody("POST", "/measurements/check-in", json.encodeToString(CheckInRequest(date, kg)))
+    }
+
+    /** PUT /food-entries/{id} — change a diary entry's quantity. */
+    suspend fun updateFoodEntry(
+        id: String,
+        quantity: Double,
+        variantId: String,
+        mealType: String,
+        unit: String,
+        date: String,
+    ) {
+        sendBody(
+            "PUT", "/food-entries/$id",
+            json.encodeToString(
+                UpdateFoodEntryRequest(quantity, variantId.ifBlank { null }, mealType, unit, date),
+            ),
+        )
+    }
+
+    /** DELETE /food-entries/{id} — remove a diary entry. */
+    suspend fun deleteFoodEntry(id: String) {
+        sendBody("DELETE", "/food-entries/$id", null)
     }
 
     /** GET /foods/{id} — full food incl. default_variant nutrition. */

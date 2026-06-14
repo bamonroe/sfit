@@ -214,6 +214,41 @@ class AppRepository(
         }
     }
 
+    /** Change a diary entry's quantity, then refresh. */
+    fun updateEntry(entry: FoodEntry, newQuantity: Double, onError: (String) -> Unit = {}) {
+        scope.launch {
+            val s = store.settings.first()
+            if (!s.isConfigured) return@launch
+            try {
+                SparkyApi(s.baseUrl, s.apiKey).updateFoodEntry(
+                    id = entry.id,
+                    quantity = newQuantity,
+                    variantId = entry.variantId,
+                    mealType = entry.mealType ?: "snacks",
+                    unit = entry.unit,
+                    date = entry.entryDate.ifBlank { LocalDate.now().toString() },
+                )
+                refresh()
+            } catch (e: Exception) {
+                onError(e.message ?: "Update failed")
+            }
+        }
+    }
+
+    /** Delete a diary entry, then refresh. */
+    fun deleteEntry(entry: FoodEntry, onError: (String) -> Unit = {}) {
+        scope.launch {
+            val s = store.settings.first()
+            if (!s.isConfigured) return@launch
+            try {
+                SparkyApi(s.baseUrl, s.apiKey).deleteFoodEntry(entry.id)
+                refresh()
+            } catch (e: Exception) {
+                onError(e.message ?: "Delete failed")
+            }
+        }
+    }
+
     /** Aggregate the last [USAGE_WINDOW_DAYS] days of diary entries into per-food usage. */
     private suspend fun computeUsage(api: SparkyApi): Map<String, Usage> = coroutineScope {
         val today = LocalDate.now()

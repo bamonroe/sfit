@@ -36,4 +36,8 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayState())
 
     fun refresh() = repo.refresh()
+
+    fun editEntry(entry: FoodEntry, newQuantity: Double) = repo.updateEntry(entry, newQuantity)
+
+    fun deleteEntry(entry: FoodEntry) = repo.deleteEntry(entry)
 }
