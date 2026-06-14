@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material3.AlertDialog
@@ -65,6 +66,7 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
     // Reset expansion when the granularity changes.
     var expanded by remember(state.granularity) { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<HistoryRow?>(null) }
+    var confirmDelete by remember { mutableStateOf<HistoryRow?>(null) }
 
     if (showLogWeight) {
         LogWeightDialog(
@@ -83,6 +85,27 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
             onDismiss = { editing = null },
             title = "Edit weight",
             subtitle = row.label,
+        )
+    }
+
+    confirmDelete?.let { row ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("Delete weigh-in?") },
+            text = {
+                val w = row.weight?.let { "  (%.1f %s)".format(it, state.unit) } ?: ""
+                Text("Remove the ${row.label} weigh-in$w? This can't be undone.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    row.checkInId?.let { vm.deleteCheckIn(it) }
+                    confirmDelete = null
+                    expanded = null
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = null }) { Text("Cancel") }
+            },
         )
     }
 
@@ -134,6 +157,7 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
                                 unit = state.unit,
                                 onToggle = { expanded = if (expanded == row.label) null else row.label },
                                 onEdit = { editing = row },
+                                onDelete = { confirmDelete = row },
                             )
                         }
                     }
@@ -180,6 +204,7 @@ private fun HistoryRowItem(
     unit: String,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle)) {
         Row(
@@ -191,12 +216,12 @@ private fun HistoryRowItem(
             DeltaCell(row.weightDelta, 0.9f)
             DeficitCell(row.deficit, 1.0f)
         }
-        if (expanded) HistoryRowDetail(row, unit, onEdit)
+        if (expanded) HistoryRowDetail(row, unit, onEdit, onDelete)
     }
 }
 
 @Composable
-private fun HistoryRowDetail(row: HistoryRow, unit: String, onEdit: () -> Unit) {
+private fun HistoryRowDetail(row: HistoryRow, unit: String, onEdit: () -> Unit, onDelete: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
@@ -215,10 +240,26 @@ private fun HistoryRowDetail(row: HistoryRow, unit: String, onEdit: () -> Unit) 
         row.deficit?.let { DetailLine("Est. deficit", "${it.roundToInt()} kcal/day") }
 
         if (row.date != null) {
-            FilledTonalButton(onClick = onEdit, modifier = Modifier.padding(top = 4.dp)) {
-                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Edit weight")
+            Row(
+                modifier = Modifier.padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilledTonalButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Edit weight")
+                }
+                TextButton(onClick = onDelete) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
             }
         } else {
             Text(

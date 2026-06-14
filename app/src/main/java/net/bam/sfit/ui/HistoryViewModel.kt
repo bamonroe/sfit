@@ -46,4 +46,7 @@ class HistoryViewModel(private val repo: AppRepository) : ViewModel() {
      *  Defaults to today; pass an ISO date to edit a past weigh-in. */
     fun logWeight(displayValue: Double, date: String? = null) =
         if (date != null) repo.logWeight(displayValue, date) else repo.logWeight(displayValue)
+
+    /** Delete a weigh-in by its check-in id. */
+    fun deleteCheckIn(id: String) = repo.deleteCheckIn(id)
 }

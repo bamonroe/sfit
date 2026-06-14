@@ -32,6 +32,8 @@ data class HistoryRow(
     // ISO date of the underlying weigh-in — set only for Daily rows (a single
     // date), so that day's check-in can be edited. Null for week/month aggregates.
     val date: String? = null,
+    // Check-in id for the Daily row's weigh-in, so it can be deleted.
+    val checkInId: String? = null,
 )
 
 /** How often (count) and how recently (lastDate, ISO) a food was logged. */
@@ -102,7 +104,7 @@ class AppRepository(
                 _history.value = HistoryData(
                     c.unit,
                     c.byGranularity.mapValues { (_, rows) ->
-                        rows.map { HistoryRow(it.label, it.weight, it.weightDelta, it.deficit, it.date) }
+                        rows.map { HistoryRow(it.label, it.weight, it.weightDelta, it.deficit, it.date, it.checkInId) }
                     },
                 )
             }
@@ -155,8 +157,9 @@ class AppRepository(
 
                     val summary = summaryD.await()
                     val prefs = prefsD.await()
-                    val checkins = checkinsD.await()
-                        .mapNotNull { ci -> ci.weight?.let { LocalDate.parse(ci.date) to it } }
+                    val rawCheckins = checkinsD.await().filter { it.weight != null }
+                    val checkins = rawCheckins.map { LocalDate.parse(it.date) to it.weight!! }
+                    val checkInIds = rawCheckins.associate { LocalDate.parse(it.date) to it.id }
                     val report = reportD.await()
                     val foodsPage = foodsD.await()
                     val meals = mealsD.await().sortedBy { it.name.lowercase() }
@@ -172,7 +175,7 @@ class AppRepository(
                     weightUnit = prefs.weightUnit
                     val maintenance = maintenanceCalories(summary.calorieBalance.bmr, prefs.activityLevel)
                     val byGran = Granularity.entries.associate { g ->
-                        g.name to buildRows(g, checkins, report, maintenance, prefs.weightUnit)
+                        g.name to buildRows(g, checkins, checkInIds, report, maintenance, prefs.weightUnit)
                     }
                     _history.value = HistoryData(unitLabel(prefs.weightUnit), byGran)
 
@@ -191,7 +194,7 @@ class AppRepository(
                         CachedHistory(
                             unitLabel(prefs.weightUnit),
                             byGran.mapValues { (_, rows) ->
-                                rows.map { CachedHistoryRow(it.label, it.weight, it.weightDelta, it.deficit, it.date) }
+                                rows.map { CachedHistoryRow(it.label, it.weight, it.weightDelta, it.deficit, it.date, it.checkInId) }
                             },
                         ),
                     )
@@ -302,6 +305,20 @@ class AppRepository(
         )
     }
 
+    /** Delete a weigh-in (check-in), then refresh. */
+    fun deleteCheckIn(id: String, onError: (String) -> Unit = {}) {
+        scope.launch {
+            val s = store.settings.first()
+            if (!s.isConfigured) return@launch
+            try {
+                SparkyApi(s.baseUrl, s.apiKey).deleteCheckIn(id)
+                refresh()
+            } catch (e: Exception) {
+                onError(e.message ?: "Delete failed")
+            }
+        }
+    }
+
     /** Aggregate the last [USAGE_WINDOW_DAYS] days of diary entries into per-food usage. */
     private suspend fun computeUsage(api: SparkyApi): Map<String, Usage> = coroutineScope {
         val today = LocalDate.now()
@@ -350,6 +367,7 @@ private fun periodLabel(start: LocalDate, g: Granularity): String = when (g) {
 private fun buildRows(
     g: Granularity,
     checkins: List<Pair<LocalDate, Double>>,
+    checkInIds: Map<LocalDate, String>,
     report: Report,
     maintenance: Double,
     weightUnit: String,
@@ -380,8 +398,9 @@ private fun buildRows(
             weight = avgWeight,
             weightDelta = prevWeight?.let { avgWeight - it },
             deficit = deficit,
-            // Only a single-day row maps to one editable check-in.
+            // Only a single-day row maps to one editable/deletable check-in.
             date = if (g == Granularity.Daily) key.toString() else null,
+            checkInId = if (g == Granularity.Daily) checkInIds[key] else null,
         )
     }
     return rows.reversed() // newest first

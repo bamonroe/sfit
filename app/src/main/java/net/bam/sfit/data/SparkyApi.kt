@@ -78,9 +78,10 @@ data class FoodEntryMeal(
     @SerialName("meal_type") val mealType: String? = null,
 )
 
-/** A check-in measurement row (we only need date + weight). */
+/** A check-in measurement row (we only need id + date + weight). */
 @Serializable
 data class CheckIn(
+    val id: String = "",
     @SerialName("entry_date") val date: String = "",
     val weight: Double? = null,
 )
@@ -430,6 +431,11 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** POST /measurements/check-in — upsert a day's body weight (kg). */
     suspend fun logWeight(date: String, kg: Double) {
         sendBody("POST", "/measurements/check-in", json.encodeToString(CheckInRequest(date, kg)))
+    }
+
+    /** DELETE /measurements/check-in/{id} — remove a weigh-in. */
+    suspend fun deleteCheckIn(id: String) {
+        sendBody("DELETE", "/measurements/check-in/$id", null)
     }
 
     /** PUT /food-entries/{id} — change a diary entry's quantity. */
