@@ -53,10 +53,11 @@ class MainViewModel(
         // React to config changes: when configured, (re)load today's summary.
         viewModelScope.launch {
             store.settings.collect { s ->
-                val wasConfigured = settings.isConfigured
+                val prev = settings
                 settings = s
                 _state.update { it.copy(configured = s.isConfigured) }
-                if (s.isConfigured && (!wasConfigured || s != settings)) refresh()
+                // Refresh on first config and whenever the URL/key actually change.
+                if (s.isConfigured && s != prev) refresh()
             }
         }
     }
