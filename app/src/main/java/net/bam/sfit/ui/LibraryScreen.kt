@@ -116,7 +116,6 @@ fun LibraryScreen(
             onDismiss = vm::closeDetail,
             onAddToMeal = { pickMealFor = food; vm.closeDetail() },
             onEdit = { onEditFood(food); vm.closeDetail() },
-            onDelete = { food.id?.let(vm::deleteFood) },
         )
     }
 
@@ -265,10 +264,8 @@ private fun FoodDetailSheet(
     onDismiss: () -> Unit,
     onAddToMeal: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
-    var confirmDelete by remember { mutableStateOf(false) }
     val v = food.defaultVariant
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -305,26 +302,8 @@ private fun FoodDetailSheet(
             ) {
                 Button(onClick = onAddToMeal, modifier = Modifier.weight(1f)) { Text("Add to meal") }
                 OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("Edit") }
-                OutlinedButton(
-                    onClick = { confirmDelete = true },
-                    modifier = Modifier.weight(1f),
-                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             }
         }
-    }
-
-    if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete food?") },
-            text = { Text("Remove \"${food.name}\" from your database?") },
-            confirmButton = {
-                TextButton(onClick = { confirmDelete = false; onDelete() }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-        )
     }
 }
 

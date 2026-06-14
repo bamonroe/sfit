@@ -12,14 +12,18 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -51,6 +55,7 @@ fun EditFoodScreen(food: BarcodeFood, store: SettingsStore, onDone: () -> Unit) 
     var fat by remember { mutableStateOf(numStr(v.fat)) }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -119,7 +124,38 @@ fun EditFoodScreen(food: BarcodeFood, store: SettingsStore, onDone: () -> Unit) 
                     Text("Save")
                 }
             }
+
+            OutlinedButton(
+                onClick = { confirmDelete = true },
+                enabled = !saving && food.id != null,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) { Text("Delete food", color = MaterialTheme.colorScheme.error) }
         }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete food?") },
+            text = { Text("Remove \"${food.name}\" from your database?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    saving = true
+                    scope.launch {
+                        try {
+                            val s = store.settings.first()
+                            SparkyApi(s.baseUrl, s.apiKey).deleteFood(food.id ?: "")
+                            onDone()
+                        } catch (e: Exception) {
+                            saving = false
+                            error = e.message ?: "Delete failed"
+                        }
+                    }
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+        )
     }
 }
 
