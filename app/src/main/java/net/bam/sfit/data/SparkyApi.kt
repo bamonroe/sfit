@@ -1,5 +1,6 @@
 package net.bam.sfit.data
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -47,7 +48,12 @@ data class DailySummary(
 
 /** Thin client for the SparkyFitness REST API (auth: Bearer api key). */
 class SparkyApi(baseUrl: String, private val apiKey: String) {
-    private val base = baseUrl.trim().trimEnd('/')
+    // The SparkyFitness REST API always lives under /api; tolerate a base URL
+    // entered without it (e.g. "http://fit.bam") so requests don't hit the SPA.
+    private val base = run {
+        val b = baseUrl.trim().trimEnd('/')
+        if (b.endsWith("/api")) b else "$b/api"
+    }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -58,17 +64,31 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
 
     /** GET /daily-summary?date=YYYY-MM-DD */
     suspend fun dailySummary(date: String): DailySummary = withContext(Dispatchers.IO) {
+        val url = "$base/daily-summary?date=$date"
+        Log.d(TAG, "GET $url")
         val request = Request.Builder()
-            .url("$base/daily-summary?date=$date")
+            .url(url)
             .header("Authorization", "Bearer $apiKey")
             .header("Accept", "application/json")
             .build()
         client.newCall(request).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
+            val ctype = resp.header("Content-Type") ?: "?"
+            Log.d(TAG, "HTTP ${resp.code} [$ctype] ${body.length}B: ${body.take(300)}")
             if (!resp.isSuccessful) {
-                error("HTTP ${resp.code}: ${body.take(200).ifBlank { resp.message }}")
+                error("HTTP ${resp.code}: ${body.take(160).ifBlank { resp.message }}")
             }
-            if (body.isBlank()) DailySummary() else json.decodeFromString(body)
+            if (body.isBlank()) return@withContext DailySummary()
+            try {
+                json.decodeFromString<DailySummary>(body)
+            } catch (e: Exception) {
+                Log.e(TAG, "JSON parse failed (content-type=$ctype). Body: ${body.take(300)}", e)
+                error("Not JSON (got $ctype). Starts: \"${body.take(60).trim()}…\"")
+            }
         }
+    }
+
+    private companion object {
+        const val TAG = "SFit"
     }
 }
