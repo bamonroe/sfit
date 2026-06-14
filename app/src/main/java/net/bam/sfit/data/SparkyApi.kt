@@ -29,6 +29,8 @@ data class FoodEntry(
     @SerialName("meal_type") val mealType: String? = null,
     @SerialName("food_name") val foodName: String? = null,
     @SerialName("brand_name") val brandName: String? = null,
+    @SerialName("food_id") val foodId: String = "",
+    @SerialName("entry_date") val entryDate: String = "",
 ) {
     val consumedCalories: Double get() = if (servingSize > 0) calories * quantity / servingSize else 0.0
 }
@@ -357,6 +359,10 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** GET /meals?filter=mine — the user's recipes. */
     suspend fun meals(): List<LibraryMeal> =
         decode(getBody("/meals?filter=mine"), emptyList())
+
+    /** GET /foods/food-entries/{date} — diary entries logged on a day. */
+    suspend fun foodEntriesForDate(date: String): List<FoodEntry> =
+        decode(getBody("/foods/food-entries/$date"), emptyList())
 
     /** GET /foods/{id} — full food incl. default_variant nutrition. */
     suspend fun foodDetail(id: String): BarcodeFood =
