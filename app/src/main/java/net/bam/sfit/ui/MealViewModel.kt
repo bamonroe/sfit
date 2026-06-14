@@ -69,6 +69,9 @@ class MealViewModel(
 
     fun clearMessage() = _state.update { it.copy(message = null, error = null) }
 
+    /** One-shot ack so the "created → navigate back" effect doesn't re-fire on reopen. */
+    fun acknowledgeCreated() = _state.update { it.copy(createdOk = false) }
+
     /** Look up a barcode and append it as an ingredient (deduped by barcode). */
     fun addByBarcode(barcode: String) {
         val code = barcode.trim()

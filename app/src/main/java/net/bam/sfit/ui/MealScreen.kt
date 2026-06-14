@@ -56,7 +56,12 @@ fun MealScreen(vm: MealViewModel, onBack: () -> Unit, onScan: () -> Unit) {
             vm.clearMessage()
         }
     }
-    LaunchedEffect(state.createdOk) { if (state.createdOk) onBack() }
+    LaunchedEffect(state.createdOk) {
+        if (state.createdOk) {
+            vm.acknowledgeCreated()
+            onBack()
+        }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
