@@ -208,10 +208,34 @@ data class FoodsPage(
 )
 
 @Serializable
+data class MealFood(
+    @SerialName("food_name") val foodName: String? = null,
+    val name: String? = null,
+    val quantity: Double = 0.0,
+    val unit: String = "g",
+    @SerialName("serving_size") val servingSize: Double = 100.0,
+    val calories: Double = 0.0,
+    val protein: Double = 0.0,
+    val carbs: Double = 0.0,
+    val fat: Double = 0.0,
+) {
+    val displayName: String get() = foodName ?: name ?: "(unnamed)"
+    fun scaled(value: Double): Double = if (servingSize > 0) value * quantity / servingSize else 0.0
+    val kcal: Double get() = scaled(calories)
+}
+
+@Serializable
 data class LibraryMeal(
     val id: String = "",
     val name: String = "",
-)
+    val foods: List<MealFood> = emptyList(),
+) {
+    val totalCalories: Double get() = foods.sumOf { it.kcal }
+    val totalProtein: Double get() = foods.sumOf { it.scaled(it.protein) }
+    val totalCarbs: Double get() = foods.sumOf { it.scaled(it.carbs) }
+    val totalFat: Double get() = foods.sumOf { it.scaled(it.fat) }
+    val totalGrams: Double get() = foods.sumOf { it.quantity }
+}
 
 @Serializable
 private data class UpdateFoodNameReq(val name: String, val brand: String? = null)
@@ -337,6 +361,11 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** DELETE /foods/{id} */
     suspend fun deleteFood(id: String) {
         sendBody("DELETE", "/foods/$id", null)
+    }
+
+    /** DELETE /meals/{id} */
+    suspend fun deleteMeal(id: String) {
+        sendBody("DELETE", "/meals/$id", null)
     }
 
     /** Edit a food's name and its default variant's per-serving nutrition. */

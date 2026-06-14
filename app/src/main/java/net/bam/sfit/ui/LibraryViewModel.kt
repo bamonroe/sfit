@@ -22,6 +22,7 @@ data class LibraryState(
     val error: String? = null,
     val detail: BarcodeFood? = null,     // food detail shown in the sheet
     val detailLoading: Boolean = false,
+    val mealDetail: LibraryMeal? = null, // meal detail shown in the sheet
     val message: String? = null,
 )
 
@@ -74,9 +75,26 @@ class LibraryViewModel(private val store: SettingsStore) : ViewModel() {
 
     fun closeDetail() = _state.update { it.copy(detail = null) }
 
+    fun openMeal(meal: LibraryMeal) = _state.update { it.copy(mealDetail = meal) }
+
+    fun closeMealDetail() = _state.update { it.copy(mealDetail = null) }
+
     fun clearMessage() = _state.update { it.copy(message = null) }
 
     fun notify(msg: String) = _state.update { it.copy(message = msg) }
+
+    fun deleteMeal(id: String) {
+        viewModelScope.launch {
+            val s = store.settings.first()
+            try {
+                SparkyApi(s.baseUrl, s.apiKey).deleteMeal(id)
+                _state.update { it.copy(mealDetail = null, message = "Deleted") }
+                load()
+            } catch (e: Exception) {
+                _state.update { it.copy(message = e.message ?: "Delete failed") }
+            }
+        }
+    }
 
     fun deleteFood(id: String) {
         viewModelScope.launch {

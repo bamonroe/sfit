@@ -90,7 +90,9 @@ fun LibraryScreen(
                 else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                     item { SectionHeader("Meals", state.meals.size) }
                     if (state.meals.isEmpty() && !state.loading) item { EmptyRow("No meals yet") }
-                    items(state.meals, key = { "m" + it.id }) { MealRow(it) }
+                    items(state.meals, key = { "m" + it.id }) { meal ->
+                        MealRow(meal, onClick = { vm.openMeal(meal) })
+                    }
 
                     item { SectionHeader("Foods", state.totalFoods) }
                     if (state.foods.isEmpty() && !state.loading) item { EmptyRow("No foods yet") }
@@ -132,6 +134,77 @@ fun LibraryScreen(
             onAddToCurrent = { add(); vm.notify("Added to meal"); pickMealFor = null },
             onNewMeal = { mealVm.startNew(); add(); vm.notify("Started new meal"); pickMealFor = null },
             onDismiss = { pickMealFor = null },
+        )
+    }
+
+    state.mealDetail?.let { meal ->
+        MealDetailSheet(
+            meal = meal,
+            onDismiss = vm::closeMealDetail,
+            onDelete = { vm.deleteMeal(meal.id) },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MealDetailSheet(meal: LibraryMeal, onDismiss: () -> Unit, onDelete: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState()
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
+            Text(meal.name.ifBlank { "(unnamed)" }, style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "${meal.totalCalories.roundToInt()} kcal  ·  ${meal.totalGrams.roundToInt()} g total",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Macro("Protein", meal.totalProtein, Modifier.weight(1f))
+                Macro("Carbs", meal.totalCarbs, Modifier.weight(1f))
+                Macro("Fat", meal.totalFat, Modifier.weight(1f))
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            Text("Ingredients", style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            meal.foods.forEach { f ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(f.displayName, style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f))
+                    Text(
+                        "${fmt(f.quantity)} ${f.unit} · ${f.kcal.roundToInt()} kcal",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            OutlinedButton(
+                onClick = { confirmDelete = true },
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
+            ) { Text("Delete meal", color = MaterialTheme.colorScheme.error) }
+        }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete meal?") },
+            text = { Text("Remove \"${meal.name}\" from your recipes?") },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; onDelete() }) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
 }
@@ -278,12 +351,19 @@ private fun FoodRow(food: LibraryFood, onClick: () -> Unit) {
 }
 
 @Composable
-private fun MealRow(meal: LibraryMeal) {
-    Text(
-        meal.name.ifBlank { "(unnamed)" },
-        style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-    )
+private fun MealRow(meal: LibraryMeal, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(meal.name.ifBlank { "(unnamed)" }, style = MaterialTheme.typography.bodyLarge)
+        Text(
+            "${meal.totalCalories.roundToInt()} kcal",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     HorizontalDivider()
 }
 
