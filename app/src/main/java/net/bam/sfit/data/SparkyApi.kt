@@ -181,6 +181,16 @@ private data class CreateMealRequest(
 @Serializable
 private data class CreatedMeal(val id: String = "")
 
+@Serializable
+private data class LogFoodRequest(
+    @SerialName("food_id") val foodId: String,
+    @SerialName("variant_id") val variantId: String,
+    val quantity: Double,
+    val unit: String = "g",
+    @SerialName("meal_type") val mealType: String,
+    @SerialName("entry_date") val entryDate: String,
+)
+
 /** A barcode resolved to a usable DB food, ready to put in a meal draft. */
 data class ResolvedIngredient(
     val foodId: String,
@@ -363,6 +373,20 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** GET /foods/food-entries/{date} — diary entries logged on a day. */
     suspend fun foodEntriesForDate(date: String): List<FoodEntry> =
         decode(getBody("/foods/food-entries/$date"), emptyList())
+
+    /** POST /food-entries — log a food to the diary. */
+    suspend fun logFood(
+        foodId: String,
+        variantId: String,
+        grams: Double,
+        mealType: String,
+        date: String,
+    ) {
+        sendBody(
+            "POST", "/food-entries",
+            json.encodeToString(LogFoodRequest(foodId, variantId, grams, "g", mealType, date)),
+        )
+    }
 
     /** GET /foods/{id} — full food incl. default_variant nutrition. */
     suspend fun foodDetail(id: String): BarcodeFood =

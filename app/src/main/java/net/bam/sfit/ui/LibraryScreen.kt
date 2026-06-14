@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -26,7 +29,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -43,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.bam.sfit.data.BarcodeFood
@@ -58,11 +66,13 @@ fun LibraryScreen(
     onBulkAdd: () -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
     onEditMeal: (LibraryMeal) -> Unit,
+    onLogged: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val mealState by mealVm.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var pickMealFor by remember { mutableStateOf<BarcodeFood?>(null) }
+    var logFor by remember { mutableStateOf<BarcodeFood?>(null) }
 
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); vm.clearMessage() }
@@ -121,8 +131,17 @@ fun LibraryScreen(
         FoodDetailSheet(
             food = food,
             onDismiss = vm::closeDetail,
+            onLog = { logFor = food; vm.closeDetail() },
             onAddToMeal = { pickMealFor = food; vm.closeDetail() },
             onEdit = { onEditFood(food); vm.closeDetail() },
+        )
+    }
+
+    logFor?.let { food ->
+        LogFoodDialog(
+            food = food,
+            onConfirm = { grams, meal -> vm.logFood(food, grams, meal, onLogged); logFor = null },
+            onDismiss = { logFor = null },
         )
     }
 
@@ -269,6 +288,7 @@ private fun MealTargetDialog(
 private fun FoodDetailSheet(
     food: BarcodeFood,
     onDismiss: () -> Unit,
+    onLog: () -> Unit,
     onAddToMeal: () -> Unit,
     onEdit: () -> Unit,
 ) {
@@ -303,15 +323,76 @@ private fun FoodDetailSheet(
                 modifier = Modifier.padding(top = 8.dp),
             )
 
-            Row(
+            Button(
+                onClick = onLog,
                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+            ) { Text("Log to today") }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Button(onClick = onAddToMeal, modifier = Modifier.weight(1f)) { Text("Add to meal") }
+                OutlinedButton(onClick = onAddToMeal, modifier = Modifier.weight(1f)) { Text("Add to meal") }
                 OutlinedButton(onClick = onEdit, modifier = Modifier.weight(1f)) { Text("Edit") }
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LogFoodDialog(
+    food: BarcodeFood,
+    onConfirm: (Double, String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val meals = listOf("breakfast", "lunch", "snacks", "dinner")
+    val defaultMeal = remember {
+        when (java.time.LocalTime.now().hour) {
+            in 0..10 -> "breakfast"
+            in 11..14 -> "lunch"
+            in 15..16 -> "snacks"
+            else -> "dinner"
+        }
+    }
+    var meal by remember { mutableStateOf(defaultMeal) }
+    var qty by remember { mutableStateOf(fmt(food.defaultVariant.servingSize)) }
+    val grams = qty.toDoubleOrNull() ?: 0.0
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Log ${food.name}") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = qty,
+                    onValueChange = { qty = it.filter { c -> c.isDigit() || c == '.' } },
+                    label = { Text("grams") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+                Text(
+                    "${(food.defaultVariant.calories * grams / food.defaultVariant.servingSize.coerceAtLeast(1.0)).toInt()} kcal",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+                Spacer(Modifier.height(12.dp))
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    meals.forEachIndexed { i, m ->
+                        SegmentedButton(
+                            selected = meal == m,
+                            onClick = { meal = m },
+                            shape = SegmentedButtonDefaults.itemShape(i, meals.size),
+                        ) { Text(m.replaceFirstChar { it.uppercase() }, maxLines = 1) }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = grams > 0, onClick = { onConfirm(grams, meal) }) { Text("Log") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

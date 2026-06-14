@@ -123,6 +123,26 @@ class LibraryViewModel(private val store: SettingsStore) : ViewModel() {
 
     fun notify(msg: String) = _state.update { it.copy(message = msg) }
 
+    /** Log a food to today's diary, then notify the caller (e.g. to refresh Today). */
+    fun logFood(food: BarcodeFood, grams: Double, mealType: String, onLogged: () -> Unit) {
+        viewModelScope.launch {
+            val s = store.settings.first()
+            try {
+                SparkyApi(s.baseUrl, s.apiKey).logFood(
+                    foodId = food.id ?: "",
+                    variantId = food.defaultVariant.id ?: "",
+                    grams = grams,
+                    mealType = mealType,
+                    date = LocalDate.now().toString(),
+                )
+                _state.update { it.copy(message = "Logged ${food.name}") }
+                onLogged()
+            } catch (e: Exception) {
+                _state.update { it.copy(message = e.message ?: "Log failed") }
+            }
+        }
+    }
+
     fun deleteMeal(id: String) {
         viewModelScope.launch {
             val s = store.settings.first()

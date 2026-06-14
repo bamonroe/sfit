@@ -112,6 +112,7 @@ private fun AppRoot(store: SettingsStore, draftStore: DraftStore) {
             onBulkAdd = { bulkVm.reset(); screen = Screen.BulkAdd },
             onEditFood = { food -> editFood = food; screen = Screen.EditFood },
             onEditMeal = { meal -> editMeal = meal; screen = Screen.EditMeal },
+            onLogged = vm::refresh,
         )
         Screen.Settings -> SettingsScreen(store, onDone = { screen = Screen.Main })
         Screen.Meal -> MealScreen(
@@ -180,6 +181,7 @@ private fun HomePager(
     onBulkAdd: () -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
     onEditMeal: (LibraryMeal) -> Unit,
+    onLogged: () -> Unit,
 ) {
     // Page 0 = Library (swipe right), 1 = Today (start), 2 = History (swipe left).
     val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
@@ -197,6 +199,7 @@ private fun HomePager(
                     onBulkAdd = onBulkAdd,
                     onEditFood = onEditFood,
                     onEditMeal = onEditMeal,
+                    onLogged = onLogged,
                 )
                 1 -> MainScreen(mainVm, onOpenSettings, onOpenMeal)
                 else -> HistoryScreen(historyVm)
