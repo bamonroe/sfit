@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -39,7 +40,12 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreen(vm: MainViewModel, onOpenSettings: () -> Unit, onOpenHistory: () -> Unit) {
+fun MainScreen(
+    vm: MainViewModel,
+    onOpenSettings: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenMeal: () -> Unit,
+) {
     val state by vm.state.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -47,6 +53,9 @@ fun MainScreen(vm: MainViewModel, onOpenSettings: () -> Unit, onOpenHistory: () 
             TopAppBar(
                 title = { Text("Today") },
                 actions = {
+                    IconButton(onClick = onOpenMeal) {
+                        Icon(Icons.Default.Restaurant, contentDescription = "New meal")
+                    }
                     IconButton(onClick = onOpenHistory) {
                         Icon(Icons.Default.History, contentDescription = "History")
                     }
