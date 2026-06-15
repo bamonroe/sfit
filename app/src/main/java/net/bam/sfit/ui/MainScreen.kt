@@ -379,11 +379,13 @@ private fun EntryEditSheet(
     }
     val qty = text.trim().toDoubleOrNull()
     val valid = qty != null && qty > 0
-    val kcal = if (valid && entry.servingSize > 0) entry.calories * qty!! / entry.servingSize else 0.0
+    val scale = if (valid && entry.servingSize > 0) qty!! / entry.servingSize else 0.0
+    val kcal = entry.calories * scale
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 32.dp),
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp).padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(entry.foodName ?: "(unnamed)", style = MaterialTheme.typography.titleLarge)
@@ -400,7 +402,20 @@ private fun EntryEditSheet(
             )
             Text(
                 "${kcal.roundToInt()} kcal",
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MacroCell("Protein", entry.protein * scale, Modifier.weight(1f))
+                MacroCell("Carbs", entry.carbs * scale, Modifier.weight(1f))
+                MacroCell("Fat", entry.fat * scale, Modifier.weight(1f))
+            }
+            Text(
+                "Fiber ${gFmt(entry.dietaryFiber * scale)}g · Sugar ${gFmt(entry.sugars * scale)}g · " +
+                    "Sodium ${(entry.sodium * scale).roundToInt()}mg",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(
@@ -420,6 +435,17 @@ private fun EntryEditSheet(
         }
     }
 }
+
+@Composable
+private fun MacroCell(label: String, grams: Double, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("${gFmt(grams)}g", style = MaterialTheme.typography.titleMedium)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+private fun gFmt(d: Double): String =
+    if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
 
 @Composable
 private fun RemainingCalories(state: DayState) {
