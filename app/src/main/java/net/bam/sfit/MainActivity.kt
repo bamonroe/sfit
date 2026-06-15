@@ -70,6 +70,7 @@ import net.bam.sfit.ui.MainScreen
 import net.bam.sfit.ui.MainViewModel
 import net.bam.sfit.ui.MealScreen
 import net.bam.sfit.ui.MealViewModel
+import net.bam.sfit.ui.PickFoodScreen
 import net.bam.sfit.ui.ProviderSearchScreen
 import net.bam.sfit.ui.ProviderSearchViewModel
 import net.bam.sfit.ui.ScannerScreen
@@ -89,7 +90,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal, ProviderSearch, LogFood, CustomFood }
+private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal, ProviderSearch, LogFood, CustomFood, PickFood }
 
 @Composable
 private fun AppRoot(
@@ -130,6 +131,7 @@ private fun AppRoot(
             Screen.BulkAdd -> { libraryVm.load(); screen = Screen.Main }
             Screen.EditFood -> { editFood = null; libraryVm.load(); screen = Screen.Main }
             Screen.EditMeal -> { editMeal = null; libraryVm.load(); screen = Screen.Main }
+            Screen.PickFood -> screen = Screen.Meal
             Screen.ProviderSearch, Screen.LogFood, Screen.CustomFood -> screen = Screen.Main
             else -> screen = Screen.Main // Settings, Meal
         }
@@ -156,6 +158,7 @@ private fun AppRoot(
             mealVm,
             onBack = { screen = Screen.Main },
             onScan = { screen = Screen.Scanner },
+            onPickFromLibrary = { screen = Screen.PickFood },
         )
         Screen.Scanner -> {
             val s by mealVm.state.collectAsStateWithLifecycle()
@@ -214,6 +217,22 @@ private fun AppRoot(
         Screen.CustomFood -> CustomFoodScreen(
             repo,
             onDone = { screen = Screen.Main },
+        )
+        Screen.PickFood -> PickFoodScreen(
+            libraryVm,
+            onPick = { food ->
+                val v = food.defaultVariant
+                mealVm.addFood(
+                    foodId = food.id ?: "",
+                    variantId = v.id ?: "",
+                    name = food.name,
+                    brand = food.brand,
+                    calories = v.calories,
+                    servingSize = v.servingSize,
+                    servingUnit = v.servingUnit,
+                )
+            },
+            onBack = { screen = Screen.Meal },
         )
     }
 }

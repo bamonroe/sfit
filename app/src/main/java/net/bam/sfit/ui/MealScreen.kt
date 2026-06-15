@@ -50,7 +50,12 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MealScreen(vm: MealViewModel, onBack: () -> Unit, onScan: () -> Unit) {
+fun MealScreen(
+    vm: MealViewModel,
+    onBack: () -> Unit,
+    onScan: () -> Unit,
+    onPickFromLibrary: () -> Unit,
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val containers by vm.containers.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
@@ -111,8 +116,11 @@ fun MealScreen(vm: MealViewModel, onBack: () -> Unit, onScan: () -> Unit) {
                     Icon(Icons.Default.QrCodeScanner, contentDescription = null)
                     Text("  Scan", maxLines = 1)
                 }
+                OutlinedButton(onClick = onPickFromLibrary, modifier = Modifier.weight(1f)) {
+                    Text("Library", maxLines = 1)
+                }
                 OutlinedButton(onClick = { showAddDialog = true }, modifier = Modifier.weight(1f)) {
-                    Text("Add barcode")
+                    Text("Barcode", maxLines = 1)
                 }
             }
 
@@ -127,7 +135,7 @@ fun MealScreen(vm: MealViewModel, onBack: () -> Unit, onScan: () -> Unit) {
 
             if (state.draft.ingredients.isEmpty()) {
                 Text(
-                    "Scan or add barcodes to build the meal.",
+                    "Scan, add from your library, or enter a barcode to build the meal.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 24.dp),
                 )
