@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -111,7 +112,10 @@ fun LibraryScreen(
                     onRefresh = vm::load,
                     modifier = Modifier.fillMaxSize(),
                 ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 96.dp),
+                    ) {
                         item { SectionHeader("Meals", state.meals.size) }
                         if (state.meals.isEmpty() && !state.loading) item { EmptyRow("No meals yet") }
                         items(state.meals, key = { "m" + it.id }) { meal ->

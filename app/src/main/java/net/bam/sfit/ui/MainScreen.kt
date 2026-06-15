@@ -136,7 +136,10 @@ private fun TodayContent(
     modifier: Modifier,
 ) {
     PullToRefreshBox(isRefreshing = state.loading, onRefresh = onRefresh, modifier = modifier) {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 96.dp),
+        ) {
         item {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 24.dp),
