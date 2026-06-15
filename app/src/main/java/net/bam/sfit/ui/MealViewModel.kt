@@ -44,7 +44,16 @@ class MealViewModel(
 
     private val draft get() = _state.value.draft
 
-    fun setFinalGrams(grams: Double?) = mutate { it.copy(finalGrams = grams) }
+    fun setGrossGrams(grams: Double?) = mutate { it.copy(grossGrams = grams) }
+
+    fun selectContainer(id: String?) = mutate { it.copy(containerId = id) }
+
+    /** Net final weight (gross − selected container's tare), or null if no gross. */
+    private fun netFinalGrams(d: MealDraft): Double? {
+        val gross = d.grossGrams ?: return null
+        val tare = containers.value.firstOrNull { it.id == d.containerId }?.tareGrams ?: 0.0
+        return (gross - tare).coerceAtLeast(0.0)
+    }
 
     fun addContainer(name: String, tareGrams: Double) {
         viewModelScope.launch {
@@ -173,7 +182,7 @@ class MealViewModel(
             _state.update { it.copy(creating = true, error = null) }
             try {
                 val s = settingsStore.settings.first()
-                SparkyApi(s.baseUrl, s.apiKey).createMeal(d.name, lines, d.finalGrams)
+                SparkyApi(s.baseUrl, s.apiKey).createMeal(d.name, lines, netFinalGrams(d))
                 draftStore.clear()
                 _state.update {
                     MealUiState(message = "Created \"${d.name}\"", createdOk = true)

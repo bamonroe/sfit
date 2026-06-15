@@ -2,8 +2,6 @@ package net.bam.sfit.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,14 +15,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -154,10 +155,12 @@ fun MealScreen(
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
                 FinalWeightSection(
-                    finalGrams = state.draft.finalGrams,
+                    grossGrams = state.draft.grossGrams,
+                    containerId = state.draft.containerId,
                     ingredientGrams = state.draft.totalGrams,
                     containers = containers,
-                    onFinalChange = vm::setFinalGrams,
+                    onGrossChange = vm::setGrossGrams,
+                    onSelectContainer = vm::selectContainer,
                     onAddContainer = { showAddContainer = true },
                     onManageContainers = { showManageContainers = true },
                 )
@@ -198,26 +201,34 @@ fun MealScreen(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FinalWeightSection(
-    finalGrams: Double?,
+    grossGrams: Double?,
+    containerId: String?,
     ingredientGrams: Double,
     containers: List<Container>,
-    onFinalChange: (Double?) -> Unit,
+    onGrossChange: (Double?) -> Unit,
+    onSelectContainer: (String?) -> Unit,
     onAddContainer: () -> Unit,
     onManageContainers: () -> Unit,
 ) {
-    var text by remember { mutableStateOf(finalGrams?.let { gramStr(it) } ?: "") }
+    var text by remember { mutableStateOf(grossGrams?.let { gramStr(it) } ?: "") }
     // Populate from a restored draft once, without clobbering live typing.
-    LaunchedEffect(finalGrams) {
-        if (text.isBlank() && finalGrams != null) text = gramStr(finalGrams)
+    LaunchedEffect(grossGrams) {
+        if (text.isBlank() && grossGrams != null) text = gramStr(grossGrams)
     }
+    var menuOpen by remember { mutableStateOf(false) }
+    val selected = containers.firstOrNull { it.id == containerId }
+    val gross = text.toDoubleOrNull()
+    val net = gross?.let { (it - (selected?.tareGrams ?: 0.0)).coerceAtLeast(0.0) }
+
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
         Text("Final weight (optional)", style = MaterialTheme.typography.titleSmall)
         Text(
-            "Weigh the finished dish and tap a container to subtract its tare. " +
-                "Used as the recipe's total instead of the ${ingredientGrams.roundToInt()} g ingredient sum.",
+            "Weigh the finished dish (in its container), pick the container, and its tare " +
+                "is subtracted. Used as the recipe's total instead of the " +
+                "${ingredientGrams.roundToInt()} g ingredient sum.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(vertical = 4.dp),
@@ -226,32 +237,57 @@ private fun FinalWeightSection(
             value = text,
             onValueChange = {
                 text = it.filter { c -> c.isDigit() || c == '.' }
-                onFinalChange(text.toDoubleOrNull())
+                onGrossChange(text.toDoubleOrNull())
             },
-            label = { Text("Final weight (g)") },
+            label = { Text("Weighed weight (g)") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             modifier = Modifier.fillMaxWidth(),
         )
-        FlowRow(
+        ExposedDropdownMenuBox(
+            expanded = menuOpen,
+            onExpandedChange = { menuOpen = it },
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            containers.forEach { c ->
-                AssistChip(
-                    onClick = {
-                        val cur = text.toDoubleOrNull() ?: 0.0
-                        val net = (cur - c.tareGrams).coerceAtLeast(0.0)
-                        text = gramStr(net)
-                        onFinalChange(net)
-                    },
-                    label = { Text("${c.name}  −${c.tareGrams.roundToInt()} g") },
+            OutlinedTextField(
+                value = selected?.let { "${it.name}  ·  ${it.tareGrams.roundToInt()} g" } ?: "No container",
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Container") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuOpen) },
+                modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = true).fillMaxWidth(),
+            )
+            ExposedDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text("No container") },
+                    onClick = { onSelectContainer(null); menuOpen = false },
                 )
+                containers.forEach { c ->
+                    DropdownMenuItem(
+                        text = { Text("${c.name}  ·  ${c.tareGrams.roundToInt()} g") },
+                        onClick = { onSelectContainer(c.id); menuOpen = false },
+                    )
+                }
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("+ Add container") },
+                    onClick = { menuOpen = false; onAddContainer() },
+                )
+                if (containers.isNotEmpty()) {
+                    DropdownMenuItem(
+                        text = { Text("Manage containers") },
+                        onClick = { menuOpen = false; onManageContainers() },
+                    )
+                }
             }
-            AssistChip(onClick = onAddContainer, label = { Text("+ Container") })
-            if (containers.isNotEmpty()) {
-                AssistChip(onClick = onManageContainers, label = { Text("Manage") })
-            }
+        }
+        if (net != null) {
+            val math = selected?.let { "${gross!!.roundToInt()} − ${it.tareGrams.roundToInt()} g tare = " } ?: ""
+            Text(
+                "Recipe total: $math${net.roundToInt()} g",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
     }
 }

@@ -30,15 +30,15 @@ data class DraftIngredient(
 data class MealDraft(
     val name: String = "",
     val ingredients: List<DraftIngredient> = emptyList(),
-    // Net weighed weight of the finished dish; overrides the raw ingredient sum
-    // as the recipe's total when set (e.g. cooked weight, container tared off).
-    val finalGrams: Double? = null,
+    // Weighed gross weight of the finished dish (in its container), and the
+    // selected container (null = none). Net = gross − tare overrides the raw
+    // ingredient sum as the recipe's total.
+    val grossGrams: Double? = null,
+    val containerId: String? = null,
 ) {
     val isEmpty: Boolean get() = name.isBlank() && ingredients.isEmpty()
     val totalKcal: Double get() = ingredients.sumOf { it.kcal }
     val totalGrams: Double get() = ingredients.sumOf { it.grams }
-    /** The recipe's total weight: the weighed final weight if given, else the sum. */
-    val recipeGrams: Double get() = finalGrams ?: totalGrams
 }
 
 private val Context.draftStore by preferencesDataStore(name = "meal_draft")
