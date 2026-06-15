@@ -2,6 +2,8 @@ package net.bam.sfit.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.bam.sfit.data.Container
 import net.bam.sfit.data.DraftIngredient
 import kotlin.math.roundToInt
 
@@ -48,8 +52,11 @@ import kotlin.math.roundToInt
 @Composable
 fun MealScreen(vm: MealViewModel, onBack: () -> Unit, onScan: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
+    val containers by vm.containers.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var showAddDialog by remember { mutableStateOf(false) }
+    var showAddContainer by remember { mutableStateOf(false) }
+    var showManageContainers by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.message, state.error) {
         (state.error ?: state.message)?.let {
@@ -138,6 +145,14 @@ fun MealScreen(vm: MealViewModel, onBack: () -> Unit, onScan: () -> Unit) {
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(vertical = 12.dp),
                 )
+                FinalWeightSection(
+                    finalGrams = state.draft.finalGrams,
+                    ingredientGrams = state.draft.totalGrams,
+                    containers = containers,
+                    onFinalChange = vm::setFinalGrams,
+                    onAddContainer = { showAddContainer = true },
+                    onManageContainers = { showManageContainers = true },
+                )
                 Button(
                     onClick = vm::createMeal,
                     enabled = !state.creating,
@@ -159,7 +174,145 @@ fun MealScreen(vm: MealViewModel, onBack: () -> Unit, onScan: () -> Unit) {
             onDismiss = { showAddDialog = false },
         )
     }
+    if (showAddContainer) {
+        AddContainerDialog(
+            onAdd = { name, tare -> vm.addContainer(name, tare); showAddContainer = false },
+            onDismiss = { showAddContainer = false },
+        )
+    }
+    if (showManageContainers) {
+        ManageContainersDialog(
+            containers = containers,
+            onDelete = vm::deleteContainer,
+            onAdd = { showManageContainers = false; showAddContainer = true },
+            onDismiss = { showManageContainers = false },
+        )
+    }
 }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FinalWeightSection(
+    finalGrams: Double?,
+    ingredientGrams: Double,
+    containers: List<Container>,
+    onFinalChange: (Double?) -> Unit,
+    onAddContainer: () -> Unit,
+    onManageContainers: () -> Unit,
+) {
+    var text by remember { mutableStateOf(finalGrams?.let { gramStr(it) } ?: "") }
+    // Populate from a restored draft once, without clobbering live typing.
+    LaunchedEffect(finalGrams) {
+        if (text.isBlank() && finalGrams != null) text = gramStr(finalGrams)
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Text("Final weight (optional)", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "Weigh the finished dish and tap a container to subtract its tare. " +
+                "Used as the recipe's total instead of the ${ingredientGrams.roundToInt()} g ingredient sum.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 4.dp),
+        )
+        OutlinedTextField(
+            value = text,
+            onValueChange = {
+                text = it.filter { c -> c.isDigit() || c == '.' }
+                onFinalChange(text.toDoubleOrNull())
+            },
+            label = { Text("Final weight (g)") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            containers.forEach { c ->
+                AssistChip(
+                    onClick = {
+                        val cur = text.toDoubleOrNull() ?: 0.0
+                        val net = (cur - c.tareGrams).coerceAtLeast(0.0)
+                        text = gramStr(net)
+                        onFinalChange(net)
+                    },
+                    label = { Text("${c.name}  −${c.tareGrams.roundToInt()} g") },
+                )
+            }
+            AssistChip(onClick = onAddContainer, label = { Text("+ Container") })
+            if (containers.isNotEmpty()) {
+                AssistChip(onClick = onManageContainers, label = { Text("Manage") })
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddContainerDialog(onAdd: (String, Double) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var tare by remember { mutableStateOf("") }
+    val tareVal = tare.toDoubleOrNull()
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add container") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true,
+                )
+                OutlinedTextField(
+                    value = tare,
+                    onValueChange = { tare = it.filter { c -> c.isDigit() || c == '.' } },
+                    label = { Text("Tare weight (g)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank() && tareVal != null && tareVal > 0,
+                onClick = { tareVal?.let { onAdd(name, it) } },
+            ) { Text("Add") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun ManageContainersDialog(
+    containers: List<Container>,
+    onDelete: (String) -> Unit,
+    onAdd: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Containers") },
+        text = {
+            Column {
+                containers.forEach { c ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("${c.name}  ·  ${c.tareGrams.roundToInt()} g", modifier = Modifier.weight(1f))
+                        IconButton(onClick = { onDelete(c.id) }) {
+                            Icon(Icons.Default.Close, contentDescription = "Delete ${c.name}")
+                        }
+                    }
+                }
+                TextButton(onClick = onAdd) { Text("+ Add container") }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
+private fun gramStr(d: Double): String =
+    if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
 
 @Composable
 private fun IngredientRow(ing: DraftIngredient, onGrams: (Double) -> Unit, onRemove: () -> Unit) {

@@ -679,8 +679,8 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
      * POST /meals — create a gram-based recipe. serving_size=1g and
      * total_servings=total grams makes later gram logging scale correctly.
      */
-    suspend fun createMeal(name: String, lines: List<MealLine>): String {
-        val totalGrams = lines.sumOf { it.grams }.coerceAtLeast(1.0)
+    suspend fun createMeal(name: String, lines: List<MealLine>, totalOverride: Double? = null): String {
+        val totalGrams = (totalOverride ?: lines.sumOf { it.grams }).coerceAtLeast(1.0)
         val req = CreateMealRequest(
             name = name,
             totalServings = totalGrams,

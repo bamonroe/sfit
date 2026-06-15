@@ -3,19 +3,24 @@ package net.bam.sfit.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import net.bam.sfit.data.Container
+import net.bam.sfit.data.ContainerStore
 import net.bam.sfit.data.DraftIngredient
 import net.bam.sfit.data.DraftStore
 import net.bam.sfit.data.MealDraft
 import net.bam.sfit.data.MealLine
 import net.bam.sfit.data.SettingsStore
 import net.bam.sfit.data.SparkyApi
+import java.util.UUID
 
 data class MealUiState(
     val draft: MealDraft = MealDraft(),
@@ -29,11 +34,27 @@ data class MealUiState(
 class MealViewModel(
     private val settingsStore: SettingsStore,
     private val draftStore: DraftStore,
+    private val containerStore: ContainerStore,
 ) : ViewModel() {
     private val _state = MutableStateFlow(MealUiState())
     val state: StateFlow<MealUiState> = _state.asStateFlow()
 
+    val containers: StateFlow<List<Container>> =
+        containerStore.containers.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val draft get() = _state.value.draft
+
+    fun setFinalGrams(grams: Double?) = mutate { it.copy(finalGrams = grams) }
+
+    fun addContainer(name: String, tareGrams: Double) {
+        viewModelScope.launch {
+            containerStore.upsert(Container(UUID.randomUUID().toString(), name.trim(), tareGrams))
+        }
+    }
+
+    fun deleteContainer(id: String) {
+        viewModelScope.launch { containerStore.delete(id) }
+    }
 
     init {
         viewModelScope.launch {
@@ -152,7 +173,7 @@ class MealViewModel(
             _state.update { it.copy(creating = true, error = null) }
             try {
                 val s = settingsStore.settings.first()
-                SparkyApi(s.baseUrl, s.apiKey).createMeal(d.name, lines)
+                SparkyApi(s.baseUrl, s.apiKey).createMeal(d.name, lines, d.finalGrams)
                 draftStore.clear()
                 _state.update {
                     MealUiState(message = "Created \"${d.name}\"", createdOk = true)

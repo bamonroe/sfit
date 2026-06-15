@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import net.bam.sfit.data.AppRepository
 import net.bam.sfit.data.BarcodeFood
+import net.bam.sfit.data.ContainerStore
 import net.bam.sfit.data.DraftStore
 import net.bam.sfit.data.LibraryMeal
 import net.bam.sfit.data.Repo
@@ -81,8 +82,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val repo = Repo.get(applicationContext)
         val draftStore = DraftStore(applicationContext)
+        val containerStore = ContainerStore(applicationContext)
         setContent {
-            SFitTheme { AppRoot(repo, draftStore) }
+            SFitTheme { AppRoot(repo, draftStore, containerStore) }
         }
     }
 }
@@ -93,19 +95,20 @@ private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, Ed
 private fun AppRoot(
     repo: AppRepository,
     draftStore: DraftStore,
+    containerStore: ContainerStore,
 ) {
     val store = repo.store
     var screen by remember { mutableStateOf(Screen.Main) }
     var editFood by remember { mutableStateOf<BarcodeFood?>(null) }
     var editMeal by remember { mutableStateOf<LibraryMeal?>(null) }
 
-    val factory = remember(repo, draftStore) {
+    val factory = remember(repo, draftStore, containerStore) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
                 modelClass.isAssignableFrom(MainViewModel::class.java) -> MainViewModel(repo)
                 modelClass.isAssignableFrom(HistoryViewModel::class.java) -> HistoryViewModel(repo)
-                modelClass.isAssignableFrom(MealViewModel::class.java) -> MealViewModel(store, draftStore)
+                modelClass.isAssignableFrom(MealViewModel::class.java) -> MealViewModel(store, draftStore, containerStore)
                 modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(repo)
                 modelClass.isAssignableFrom(BulkAddViewModel::class.java) -> BulkAddViewModel(store)
                 modelClass.isAssignableFrom(ProviderSearchViewModel::class.java) -> ProviderSearchViewModel(repo)
