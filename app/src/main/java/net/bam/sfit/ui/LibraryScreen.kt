@@ -508,9 +508,20 @@ private fun LogMealDialog(
         }
     }
     var mealType by remember { mutableStateOf(defaultMeal) }
-    var qty by remember { mutableStateOf(fmt(meal.totalGrams)) }
-    val grams = qty.toDoubleOrNull() ?: 0.0
     val total = meal.totalGrams.coerceAtLeast(1.0)
+    val hasCalories = meal.totalCalories > 0
+
+    // Input mode: by grams (enter weight) or by calories (enter a kcal target
+    // and back out the grams needed to hit it).
+    var byCalories by remember { mutableStateOf(false) }
+    var qty by remember { mutableStateOf(fmt(meal.totalGrams)) }
+    var kcalTarget by remember { mutableStateOf(fmt(meal.totalCalories)) }
+
+    val grams = if (byCalories) {
+        if (hasCalories) (kcalTarget.toDoubleOrNull() ?: 0.0) * total / meal.totalCalories else 0.0
+    } else {
+        qty.toDoubleOrNull() ?: 0.0
+    }
     val kcal = meal.totalCalories * grams / total
 
     AlertDialog(
@@ -518,19 +529,48 @@ private fun LogMealDialog(
         title = { Text("Log ${meal.name}") },
         text = {
             Column {
-                OutlinedTextField(
-                    value = qty,
-                    onValueChange = { qty = it.filter { c -> c.isDigit() || c == '.' } },
-                    label = { Text("grams") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                )
-                Text(
-                    "${kcal.roundToInt()} kcal  ·  of ${fmt(meal.totalGrams)} g recipe",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+                val modes = listOf("Grams", "Calories")
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    modes.forEachIndexed { i, m ->
+                        SegmentedButton(
+                            selected = byCalories == (i == 1),
+                            onClick = { byCalories = i == 1 },
+                            shape = SegmentedButtonDefaults.itemShape(i, modes.size),
+                            enabled = i == 0 || hasCalories,
+                        ) { Text(m, maxLines = 1) }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                if (byCalories) {
+                    OutlinedTextField(
+                        value = kcalTarget,
+                        onValueChange = { kcalTarget = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("target kcal") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    Text(
+                        if (hasCalories) "= ${fmt(grams)} g  ·  of ${fmt(meal.totalGrams)} g recipe"
+                        else "No calorie data for this recipe",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = qty,
+                        onValueChange = { qty = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = { Text("grams") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    )
+                    Text(
+                        "${kcal.roundToInt()} kcal  ·  of ${fmt(meal.totalGrams)} g recipe",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     meals.forEachIndexed { i, m ->
