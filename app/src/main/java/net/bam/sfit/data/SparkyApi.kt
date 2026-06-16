@@ -80,12 +80,15 @@ data class DailySummary(
     val remainingCalories: Double get() = goals.calories - consumedCalories
 }
 
-/** A meal logged to the diary — groups several food entries under one name. */
+/** A meal logged to the diary — groups several food entries under one name.
+ *  [quantity] is the meal's logged total weight (the dish/net grams the user
+ *  ate), distinct from the sum of its scaled ingredient entries. */
 @Serializable
 data class FoodEntryMeal(
     val id: String = "",
     val name: String = "",
     @SerialName("meal_type") val mealType: String? = null,
+    val quantity: Double = 0.0,
 )
 
 /** A check-in measurement row (we only need id + date + weight). */
@@ -495,18 +498,21 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
         )
     }
 
-    /** PUT /food-entry-meals/{id} — change a logged meal's total quantity; the
-     *  ingredients (re-created server-side, hence the full body) scale with it. */
+    /** PUT /food-entry-meals/{id} — change a logged meal's total (dish) quantity;
+     *  the ingredients (re-created server-side, hence the full body) scale with
+     *  it. Unlike the POST, this body has no template, so the server stores the
+     *  foods verbatim — we scale them by newGrams / currentGrams (both the dish
+     *  total, not the ingredient sum) so the macros track the new amount. */
     suspend fun updateLoggedMeal(
         id: String,
         name: String,
         mealType: String,
         date: String,
+        currentGrams: Double,
         newGrams: Double,
         entries: List<FoodEntry>,
     ) {
-        val currentTotal = entries.sumOf { it.quantity }.coerceAtLeast(1.0)
-        val scale = newGrams / currentTotal
+        val scale = newGrams / currentGrams.coerceAtLeast(1.0)
         val foods = entries.map {
             LogMealFoodReq(it.foodId, it.variantId, it.quantity * scale, it.unit.ifBlank { "g" })
         }

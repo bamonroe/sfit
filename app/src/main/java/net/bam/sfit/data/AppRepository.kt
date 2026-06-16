@@ -48,6 +48,9 @@ data class DayData(
     // food_entry_meal_id -> logged-meal name (e.g. "Bam salsa"), so grouped
     // ingredients collapse into one diary row.
     val mealNames: Map<String, String> = emptyMap(),
+    // food_entry_meal_id -> the meal's logged total (dish) grams. Distinct from
+    // the sum of its scaled ingredient entries, which is the raw-weight portion.
+    val mealGrams: Map<String, Double> = emptyMap(),
 )
 
 /** Weight/deficit history, pre-computed for every granularity from one fetch. */
@@ -98,7 +101,7 @@ class AppRepository(
         // Render cached data instantly so every screen has something on launch.
         scope.launch {
             dayCache.load()?.takeIf { it.date == LocalDate.now().toString() }?.let { c ->
-                _day.value = DayData(c.goalCalories, c.consumedCalories, c.entries, c.mealNames)
+                _day.value = DayData(c.goalCalories, c.consumedCalories, c.entries, c.mealNames, c.mealGrams)
             }
             historyCache.load()?.let { c ->
                 _history.value = HistoryData(
@@ -164,11 +167,14 @@ class AppRepository(
                     val foodsPage = foodsD.await()
                     val meals = mealsD.await().sortedBy { it.name.lowercase() }
                     val usage = usageD.await()
-                    val mealNames = loggedMealsD.await().associate { it.id to it.name }
+                    val loggedMeals = loggedMealsD.await()
+                    val mealNames = loggedMeals.associate { it.id to it.name }
+                    val mealGrams = loggedMeals.associate { it.id to it.quantity }
 
                     // --- Today ---
                     _day.value = DayData(
-                        summary.goals.calories, summary.consumedCalories, summary.foodEntries, mealNames,
+                        summary.goals.calories, summary.consumedCalories, summary.foodEntries,
+                        mealNames, mealGrams,
                     )
 
                     // --- History (compute every granularity from one fetch) ---
@@ -187,7 +193,7 @@ class AppRepository(
                     dayCache.save(
                         CachedDay(
                             today.toString(), summary.goals.calories, summary.consumedCalories,
-                            summary.foodEntries, mealNames,
+                            summary.foodEntries, mealNames, mealGrams,
                         ),
                     )
                     historyCache.save(
@@ -282,23 +288,29 @@ class AppRepository(
         femId: String,
         name: String,
         entries: List<FoodEntry>,
+        currentGrams: Double,
         newGrams: Double,
         onError: (String) -> Unit = {},
     ) {
         val mealType = entries.firstOrNull()?.mealType ?: "snacks"
         val date = entries.firstOrNull()?.entryDate?.ifBlank { null } ?: LocalDate.now().toString()
-        val currentTotal = entries.sumOf { it.quantity }.coerceAtLeast(1.0)
-        val scale = newGrams / currentTotal
-        // Optimistic: scale this meal's entries in place.
+        // Scale by the dish total (what the user sees/edits), not the ingredient sum.
+        val scale = newGrams / currentGrams.coerceAtLeast(1.0)
+        // Optimistic: scale this meal's ingredient entries and its dish total in place.
         val updated = day.value.entries.map {
             if (it.foodEntryMealId == femId) it.copy(quantity = it.quantity * scale) else it
         }
-        _day.value = _day.value.copy(entries = updated, consumedCalories = updated.sumOf { it.consumedCalories })
+        _day.value = _day.value.copy(
+            entries = updated,
+            consumedCalories = updated.sumOf { it.consumedCalories },
+            mealGrams = day.value.mealGrams + (femId to newGrams),
+        )
         scope.launch {
             val s = store.settings.first()
             if (!s.isConfigured) return@launch
             try {
-                SparkyApi(s.baseUrl, s.apiKey).updateLoggedMeal(femId, name, mealType, date, newGrams, entries)
+                SparkyApi(s.baseUrl, s.apiKey)
+                    .updateLoggedMeal(femId, name, mealType, date, currentGrams, newGrams, entries)
             } catch (e: Exception) {
                 onError(e.message ?: "Update failed")
             }
@@ -314,6 +326,7 @@ class AppRepository(
             entries = remaining,
             consumedCalories = remaining.sumOf { it.consumedCalories },
             mealNames = day.value.mealNames - foodEntryMealId,
+            mealGrams = day.value.mealGrams - foodEntryMealId,
         )
         scope.launch {
             val s = store.settings.first()

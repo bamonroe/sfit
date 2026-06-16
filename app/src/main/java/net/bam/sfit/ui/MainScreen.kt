@@ -82,7 +82,7 @@ fun MainScreen(
     viewingMeal?.let { meal ->
         MealEntrySheet(
             meal = meal,
-            onSave = { grams -> vm.editLoggedMeal(meal.femId, meal.name, meal.entries, grams); viewingMeal = null },
+            onSave = { grams -> vm.editLoggedMeal(meal.femId, meal.name, meal.entries, meal.grams, grams); viewingMeal = null },
             onDelete = { vm.deleteLoggedMeal(meal.femId); viewingMeal = null },
             onDismiss = { viewingMeal = null },
         )
@@ -163,7 +163,7 @@ private fun TodayContent(
                 val list = byMeal.getValue(meal)
                 item { MealHeader(meal, list.sumOf { it.consumedCalories }) }
                 // Collapse grouped meal ingredients into one row; foods stay individual.
-                items(buildDiaryRows(list, state.mealNames)) { row ->
+                items(buildDiaryRows(list, state.mealNames, state.mealGrams)) { row ->
                     when (row) {
                         is DiaryRow.Food -> EntryRow(row.entry, onClick = { onEntryClick(row.entry) })
                         is DiaryRow.Meal -> MealRow(row.meal, onClick = { onMealClick(row.meal) })
@@ -225,8 +225,15 @@ private fun EntryRow(e: FoodEntry, onClick: () -> Unit) {
     }
 }
 
-/** A logged meal (recipe) collapsed into a single diary row. */
-data class DiaryMeal(val femId: String, val name: String, val entries: List<FoodEntry>) {
+/** A logged meal (recipe) collapsed into a single diary row. [grams] is the
+ *  dish total the user logged; [entries] are its scaled ingredient rows (whose
+ *  weights sum to the raw-ingredient portion, not [grams]). */
+data class DiaryMeal(
+    val femId: String,
+    val name: String,
+    val grams: Double,
+    val entries: List<FoodEntry>,
+) {
     val totalCalories: Double get() = entries.sumOf { it.consumedCalories }
 }
 
@@ -237,7 +244,11 @@ private sealed interface DiaryRow {
 
 /** Collapse entries that share a food_entry_meal_id into one meal row, keeping
  *  standalone foods individual and preserving diary order. */
-private fun buildDiaryRows(entries: List<FoodEntry>, mealNames: Map<String, String>): List<DiaryRow> {
+private fun buildDiaryRows(
+    entries: List<FoodEntry>,
+    mealNames: Map<String, String>,
+    mealGrams: Map<String, Double>,
+): List<DiaryRow> {
     val rows = mutableListOf<DiaryRow>()
     val seen = HashSet<String>()
     for (e in entries) {
@@ -246,7 +257,10 @@ private fun buildDiaryRows(entries: List<FoodEntry>, mealNames: Map<String, Stri
             rows.add(DiaryRow.Food(e))
         } else if (seen.add(fem)) {
             val group = entries.filter { it.foodEntryMealId == fem }
-            rows.add(DiaryRow.Meal(DiaryMeal(fem, mealNames[fem] ?: "Meal", group)))
+            // Prefer the meal's logged dish total; fall back to the ingredient
+            // sum for records that predate it (quantity absent / zero).
+            val grams = mealGrams[fem]?.takeIf { it > 0 } ?: group.sumOf { it.quantity }
+            rows.add(DiaryRow.Meal(DiaryMeal(fem, mealNames[fem] ?: "Meal", grams, group)))
         }
     }
     return rows
@@ -277,7 +291,7 @@ private fun MealRow(meal: DiaryMeal, onClick: () -> Unit) {
             Column {
                 Text(meal.name, style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "${meal.entries.size} ingredients",
+                    "${gFmt(meal.grams)} g  ·  ${meal.entries.size} ingredients",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -300,7 +314,7 @@ private fun MealEntrySheet(
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
-    val currentTotal = meal.entries.sumOf { it.quantity }
+    val currentTotal = meal.grams
     var text by remember {
         mutableStateOf(if (currentTotal == currentTotal.toLong().toDouble()) currentTotal.toLong().toString() else "%.1f".format(currentTotal))
     }

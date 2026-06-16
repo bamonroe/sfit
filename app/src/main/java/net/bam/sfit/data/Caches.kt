@@ -20,6 +20,7 @@ data class CachedDay(
     val consumedCalories: Double = 0.0,
     val entries: List<FoodEntry> = emptyList(),
     val mealNames: Map<String, String> = emptyMap(),
+    val mealGrams: Map<String, Double> = emptyMap(),
 )
 
 private val Context.dayCacheStore by preferencesDataStore(name = "day_cache")
