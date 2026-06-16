@@ -146,6 +146,36 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
         }
     }
 
+    /** Collapse a recipe into a single custom food carrying the meal's totals.
+     *  Its serving_size is the recipe's net total grams, so per-gram scaling
+     *  stays exact — letting the meal be used as an ingredient in other meals. */
+    fun makeFoodFromMeal(meal: LibraryMeal) {
+        viewModelScope.launch {
+            val s = repo.store.settings.first()
+            try {
+                val ok = SparkyApi(s.baseUrl, s.apiKey).createFood(
+                    name = meal.name,
+                    brand = "ingredient",
+                    servingSize = meal.totalGrams.coerceAtLeast(1.0),
+                    servingUnit = "g",
+                    calories = meal.totalCalories,
+                    protein = meal.totalProtein,
+                    carbs = meal.totalCarbs,
+                    fat = meal.totalFat,
+                )
+                ui.update {
+                    it.copy(
+                        mealDetail = null,
+                        message = if (ok) "Created food \"${meal.name}\"" else "Couldn't create food",
+                    )
+                }
+                repo.refresh()
+            } catch (e: Exception) {
+                ui.update { it.copy(message = e.message ?: "Couldn't create food") }
+            }
+        }
+    }
+
     fun deleteMeal(id: String) {
         viewModelScope.launch {
             val s = repo.store.settings.first()

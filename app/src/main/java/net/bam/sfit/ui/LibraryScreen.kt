@@ -186,6 +186,7 @@ fun LibraryScreen(
             onDismiss = vm::closeMealDetail,
             onLog = { logMealFor = meal; vm.closeMealDetail() },
             onEdit = { onEditMeal(meal); vm.closeMealDetail() },
+            onMakeFood = { vm.makeFoodFromMeal(meal) },
             onDelete = { vm.deleteMeal(meal.id) },
         )
     }
@@ -225,6 +226,7 @@ private fun MealDetailSheet(
     onDismiss: () -> Unit,
     onLog: () -> Unit,
     onEdit: () -> Unit,
+    onMakeFood: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -272,6 +274,10 @@ private fun MealDetailSheet(
                 onClick = onLog,
                 modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
             ) { Text("Log to today") }
+            OutlinedButton(
+                onClick = onMakeFood,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) { Text("Make food (to use as an ingredient)") }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),

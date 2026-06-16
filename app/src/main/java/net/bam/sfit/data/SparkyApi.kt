@@ -707,9 +707,11 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
         return created.id
     }
 
-    /** PUT /meals/{id} — replace a recipe's name and ingredients. */
-    suspend fun updateMeal(mealId: String, name: String, lines: List<MealLine>) {
-        val totalGrams = lines.sumOf { it.grams }.coerceAtLeast(1.0)
+    /** PUT /meals/{id} — replace a recipe's name and ingredients. [totalOverride]
+     *  is the recipe's net total grams (e.g. a tared finished weight); it scales
+     *  later gram-logging. Falls back to the ingredient sum when null. */
+    suspend fun updateMeal(mealId: String, name: String, lines: List<MealLine>, totalOverride: Double? = null) {
+        val totalGrams = (totalOverride ?: lines.sumOf { it.grams }).coerceAtLeast(1.0)
         val req = CreateMealRequest(
             name = name,
             totalServings = totalGrams,
