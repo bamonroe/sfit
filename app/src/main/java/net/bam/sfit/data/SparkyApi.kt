@@ -474,12 +474,12 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     }
 
     /** POST /food-entry-meals — log a meal (recipe) to the diary. [grams] is the
-     *  total logged; the recipe's ingredients scale proportionally. */
+     *  total logged. Because this carries a meal_template_id, the server scales
+     *  the ingredients itself (by quantity / total_servings), so we send them at
+     *  their original recipe quantities — pre-scaling here would double-scale. */
     suspend fun logMeal(meal: LibraryMeal, grams: Double, mealType: String, date: String) {
-        val total = meal.totalGrams.coerceAtLeast(1.0)
-        val scale = grams / total
         val foods = meal.foods.map {
-            LogMealFoodReq(it.foodId, it.variantId, it.quantity * scale, it.unit.ifBlank { "g" })
+            LogMealFoodReq(it.foodId, it.variantId, it.quantity, it.unit.ifBlank { "g" })
         }
         sendBody(
             "POST", "/food-entry-meals",
