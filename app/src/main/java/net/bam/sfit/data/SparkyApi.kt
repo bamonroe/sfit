@@ -334,13 +334,21 @@ data class MealFood(
 data class LibraryMeal(
     val id: String = "",
     val name: String = "",
+    @SerialName("serving_size") val servingSize: Double = 0.0,
+    @SerialName("total_servings") val totalServings: Double = 0.0,
     val foods: List<MealFood> = emptyList(),
 ) {
     val totalCalories: Double get() = foods.sumOf { it.kcal }
     val totalProtein: Double get() = foods.sumOf { it.scaled(it.protein) }
     val totalCarbs: Double get() = foods.sumOf { it.scaled(it.carbs) }
     val totalFat: Double get() = foods.sumOf { it.scaled(it.fat) }
-    val totalGrams: Double get() = foods.sumOf { it.quantity }
+
+    /** The recipe's recorded net weight (serving_size × total_servings). A tared
+     *  recipe's net can differ from the raw ingredient sum (yield), and the
+     *  server scales gram-logging by this total — so it, not the ingredient sum,
+     *  is the authority. Falls back to the ingredient sum for older/odd records. */
+    val totalGrams: Double
+        get() = (servingSize * totalServings).takeIf { it > 0 } ?: foods.sumOf { it.quantity }
 }
 
 @Serializable
