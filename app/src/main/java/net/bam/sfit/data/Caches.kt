@@ -47,6 +47,8 @@ data class CachedHistoryRow(
     val scaleDeficit: Double? = null,
     val impliedMaintenance: Double? = null,
     val impliedCalories: Double? = null,
+    val weightImputed: Boolean = false,
+    val caloriesImputed: Boolean = false,
     val date: String? = null,
     val checkInId: String? = null,
 )

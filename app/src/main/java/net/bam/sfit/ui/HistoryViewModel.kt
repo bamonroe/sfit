@@ -46,6 +46,15 @@ fun HistoryRow.energy(mode: EnergyMode): Double? = when (mode) {
     EnergyMode.ImpliedCalories -> impliedCalories
 }
 
+/** Which inputs each mode leans on — used to decide if its value was imputed.
+ *  (Formula maintenance is never imputed, so only logged intake + weight matter.) */
+val EnergyMode.usesWeight: Boolean get() = this != EnergyMode.Actual
+val EnergyMode.usesCalories: Boolean get() = this == EnergyMode.Actual || this == EnergyMode.ImpliedMaintenance
+
+/** True when this row's value under [mode] drew on any imputed input. */
+fun HistoryRow.energyImputed(mode: EnergyMode): Boolean =
+    (mode.usesWeight && weightImputed) || (mode.usesCalories && caloriesImputed)
+
 data class HistoryState(
     val loading: Boolean = false,
     val granularity: Granularity = Granularity.Daily,

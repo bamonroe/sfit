@@ -61,6 +61,7 @@ import net.bam.sfit.data.HistoryRow
 import kotlin.math.roundToInt
 
 private val lossGreen = Color(0xFF2ECC71)
+private val imputedYellow = Color(0xFFF1C40F) // estimated (imputed) values, regardless of sign
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -234,9 +235,12 @@ private fun HistoryRowItem(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BodyCell(row.label, 1.5f, TextAlign.Start)
-            BodyCell(row.weight?.let { "%.1f".format(it) } ?: "—", 1.1f, TextAlign.End)
-            DeltaCell(row.weightDelta, 0.9f)
-            EnergyCell(row.energy(energyMode), energyMode.isDeficit, 1.1f)
+            BodyCell(
+                row.weight?.let { "%.1f".format(it) } ?: "—", 1.1f, TextAlign.End,
+                color = if (row.weightImputed) imputedYellow else MaterialTheme.colorScheme.onSurface,
+            )
+            DeltaCell(row.weightDelta, 0.9f, row.weightImputed)
+            EnergyCell(row.energy(energyMode), energyMode.isDeficit, row.energyImputed(energyMode), 1.1f)
         }
         if (expanded) HistoryRowDetail(row, unit, onEdit, onDelete)
     }
@@ -267,6 +271,18 @@ private fun HistoryRowDetail(row: HistoryRow, unit: String, onEdit: () -> Unit, 
                 DetailLine(m.label, txt)
             }
         }
+        // Flag imputed (estimated) inputs.
+        val estimated = listOfNotNull(
+            "weight".takeIf { row.weightImputed },
+            "calories".takeIf { row.caloriesImputed },
+        )
+        if (estimated.isNotEmpty()) {
+            Text(
+                "Estimated ${estimated.joinToString(" & ")} (no log that day)",
+                style = MaterialTheme.typography.bodySmall,
+                color = imputedYellow,
+            )
+        }
 
         if (row.date != null) {
             Row(
@@ -277,17 +293,19 @@ private fun HistoryRowDetail(row: HistoryRow, unit: String, onEdit: () -> Unit, 
                 FilledTonalButton(onClick = onEdit) {
                     Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Edit weight")
+                    Text(if (row.checkInId != null) "Edit weight" else "Log weight")
                 }
-                TextButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.error,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                if (row.checkInId != null) {
+                    TextButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         } else {
@@ -366,23 +384,30 @@ private fun RowScope.HeaderCell(text: String, weight: Float, align: TextAlign) {
 }
 
 @Composable
-private fun RowScope.BodyCell(text: String, weight: Float, align: TextAlign) {
+private fun RowScope.BodyCell(
+    text: String,
+    weight: Float,
+    align: TextAlign,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+) {
     Text(
         text = text,
         modifier = Modifier.weight(weight),
         textAlign = align,
         style = MaterialTheme.typography.bodyLarge,
+        color = color,
     )
 }
 
 @Composable
-private fun RowScope.DeltaCell(delta: Double?, weight: Float) {
+private fun RowScope.DeltaCell(delta: Double?, weight: Float, imputed: Boolean) {
     if (delta == null) {
         BodyCell("—", weight, TextAlign.End)
         return
     }
-    // Weight loss is the goal here: down = green, up = red.
+    // Weight loss is the goal here: down = green, up = red — but imputed = yellow.
     val color = when {
+        imputed -> imputedYellow
         delta < 0 -> lossGreen
         delta > 0 -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurface
@@ -398,17 +423,17 @@ private fun RowScope.DeltaCell(delta: Double?, weight: Float) {
 }
 
 @Composable
-private fun RowScope.EnergyCell(value: Double?, isDeficit: Boolean, weight: Float) {
+private fun RowScope.EnergyCell(value: Double?, isDeficit: Boolean, imputed: Boolean, weight: Float) {
     if (value == null) {
         BodyCell("—", weight, TextAlign.End)
         return
     }
     val v = value.roundToInt()
-    // Deficit modes are signed and colour-coded (deficit = good = green); level
-    // modes (implied maintenance / intake) are a neutral kcal/day amount.
-    val color = if (!isDeficit) {
-        MaterialTheme.colorScheme.onSurface
-    } else when {
+    // Imputed = yellow regardless of sign. Otherwise deficit modes are signed and
+    // colour-coded (deficit = good = green); level modes are a neutral kcal/day amount.
+    val color = when {
+        imputed -> imputedYellow
+        !isDeficit -> MaterialTheme.colorScheme.onSurface
         v > 0 -> lossGreen
         v < 0 -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurface

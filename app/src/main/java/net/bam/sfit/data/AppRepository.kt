@@ -42,6 +42,9 @@ data class HistoryRow(
     val scaleDeficit: Double? = null,
     val impliedMaintenance: Double? = null,
     val impliedCalories: Double? = null,
+    // True when this row's weight / calories were (partly) imputed rather than logged.
+    val weightImputed: Boolean = false,
+    val caloriesImputed: Boolean = false,
     // ISO date of the underlying weigh-in — set only for Daily rows (a single
     // date), so that day's check-in can be edited. Null for week/month aggregates.
     val date: String? = null,
@@ -127,6 +130,7 @@ class AppRepository(
                             HistoryRow(
                                 it.label, it.weight, it.weightDelta, it.deficit,
                                 it.scaleDeficit, it.impliedMaintenance, it.impliedCalories,
+                                it.weightImputed, it.caloriesImputed,
                                 it.date, it.checkInId,
                             )
                         }
@@ -226,6 +230,7 @@ class AppRepository(
                                     CachedHistoryRow(
                                         it.label, it.weight, it.weightDelta, it.deficit,
                                         it.scaleDeficit, it.impliedMaintenance, it.impliedCalories,
+                                        it.weightImputed, it.caloriesImputed,
                                         it.date, it.checkInId,
                                     )
                                 }
@@ -473,6 +478,55 @@ private fun periodLabel(start: LocalDate, g: Granularity): String = when (g) {
     Granularity.Monthly -> start.format(monthFmt)
 }
 
+/** Least-squares fit y = b0 + b1·x + b2·x² (x centred for numerical stability),
+ *  returning a predictor — or null if there's no data. Falls back to a straight
+ *  line for two points (or a degenerate quadratic) and a constant for one. */
+private fun quadFit(points: List<Pair<Double, Double>>): ((Double) -> Double)? {
+    if (points.isEmpty()) return null
+    val mean = points.map { it.first }.average()
+    val xs = points.map { it.first - mean }
+    val ys = points.map { it.second }
+    val n = points.size
+    if (n == 1) { val c = ys[0]; return { c } }
+
+    fun linear(): (Double) -> Double {
+        val sx = xs.sum(); val sy = ys.sum()
+        val sxx = xs.sumOf { it * it }
+        val sxy = xs.indices.sumOf { xs[it] * ys[it] }
+        val denom = n * sxx - sx * sx
+        if (kotlin.math.abs(denom) < 1e-9) { val c = sy / n; return { c } }
+        val b1 = (n * sxy - sx * sy) / denom
+        val b0 = (sy - b1 * sx) / n
+        return { x -> b0 + b1 * (x - mean) }
+    }
+    if (n == 2) return linear()
+
+    val s1 = xs.sum()
+    val s2 = xs.sumOf { it * it }
+    val s3 = xs.sumOf { it * it * it }
+    val s4 = xs.sumOf { it * it * it * it }
+    val t0 = ys.sum()
+    val t1 = xs.indices.sumOf { xs[it] * ys[it] }
+    val t2 = xs.indices.sumOf { xs[it] * xs[it] * ys[it] }
+    fun det3(m: Array<DoubleArray>) =
+        m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+            m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+            m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    val a = arrayOf(
+        doubleArrayOf(n.toDouble(), s1, s2),
+        doubleArrayOf(s1, s2, s3),
+        doubleArrayOf(s2, s3, s4),
+    )
+    val d = det3(a)
+    if (kotlin.math.abs(d) < 1e-9) return linear()
+    val rhs = doubleArrayOf(t0, t1, t2)
+    fun withCol(col: Int) = Array(3) { r -> DoubleArray(3) { c -> if (c == col) rhs[r] else a[r][c] } }
+    val b0 = det3(withCol(0)) / d
+    val b1 = det3(withCol(1)) / d
+    val b2 = det3(withCol(2)) / d
+    return { x -> val xc = x - mean; b0 + b1 * xc + b2 * xc * xc }
+}
+
 private fun buildRows(
     g: Granularity,
     checkins: List<Pair<LocalDate, Double>>,
@@ -481,20 +535,57 @@ private fun buildRows(
     maintenance: Double,
     weightUnit: String,
 ): List<HistoryRow> {
-    // Average weight per period.
-    val weightByPeriod = sortedMapOf<LocalDate, MutableList<Double>>()
-    for ((date, kg) in checkins) {
-        val key = periodStart(date, g)
-        weightByPeriod.getOrPut(key) { mutableListOf() }.add(kgToDisplay(kg, weightUnit))
+    // --- Real daily observations (average any duplicate same-day weigh-ins). ---
+    val realKg = sortedMapOf<LocalDate, Double>()
+    run {
+        val acc = hashMapOf<LocalDate, MutableList<Double>>()
+        for ((date, kg) in checkins) acc.getOrPut(date) { mutableListOf() }.add(kg)
+        acc.forEach { (date, v) -> realKg[date] = v.average() }
     }
-    // Average daily deficit per period (only days with food logged).
-    val deficitSum = hashMapOf<LocalDate, Double>()
-    val deficitCount = hashMapOf<LocalDate, Int>()
+    val realCal = sortedMapOf<LocalDate, Double>()
     for (nd in report.nutritionData) {
         if (nd.calories <= 0 || nd.date.isBlank()) continue
-        val key = periodStart(runCatching { LocalDate.parse(nd.date) }.getOrNull() ?: continue, g)
-        deficitSum[key] = (deficitSum[key] ?: 0.0) + (maintenance - nd.calories)
-        deficitCount[key] = (deficitCount[key] ?: 0) + 1
+        val date = runCatching { LocalDate.parse(nd.date) }.getOrNull() ?: continue
+        realCal[date] = nd.calories
+    }
+    if (realKg.isEmpty() && realCal.isEmpty()) return emptyList()
+
+    // Quadratic fits over the real data, used to impute the gaps (and extrapolate
+    // forward to today). We don't fill before the first real day — projecting a
+    // parabola into the pre-tracking void only produces nonsense.
+    val wFit = quadFit(realKg.map { it.key.toEpochDay().toDouble() to it.value })
+    val cFit = quadFit(realCal.map { it.key.toEpochDay().toDouble() to it.value })
+    val firstW = realKg.keys.minOrNull()
+    val firstC = realCal.keys.minOrNull()
+    val start = listOfNotNull(firstW, firstC).min()
+    val end = LocalDate.now()
+
+    // Per period: weights (real + imputed), whether any day was imputed, and the
+    // daily deficit sum/count over the filled series.
+    val weightByPeriod = sortedMapOf<LocalDate, MutableList<Double>>()
+    val weightImpByPeriod = hashMapOf<LocalDate, Boolean>()
+    val deficitSum = hashMapOf<LocalDate, Double>()
+    val deficitCount = hashMapOf<LocalDate, Int>()
+    val calImpByPeriod = hashMapOf<LocalDate, Boolean>()
+
+    var d = start
+    while (!d.isAfter(end)) {
+        val key = periodStart(d, g)
+        val x = d.toEpochDay().toDouble()
+        // Impute only from each series' own first real day onward (never back-extrapolate
+        // before tracking began); forward gaps up to today are filled.
+        val kg = realKg[d] ?: if (firstW != null && !d.isBefore(firstW)) wFit?.invoke(x) else null
+        if (kg != null) {
+            weightByPeriod.getOrPut(key) { mutableListOf() }.add(kgToDisplay(kg, weightUnit))
+            if (realKg[d] == null) weightImpByPeriod[key] = true
+        }
+        val cal = realCal[d] ?: if (firstC != null && !d.isBefore(firstC)) cFit?.invoke(x) else null
+        if (cal != null) {
+            deficitSum[key] = (deficitSum[key] ?: 0.0) + (maintenance - cal)
+            deficitCount[key] = (deficitCount[key] ?: 0) + 1
+            if (realCal[d] == null) calImpByPeriod[key] = true
+        }
+        d = d.plusDays(1)
     }
 
     val periods = weightByPeriod.keys.toList() // ascending
@@ -503,15 +594,14 @@ private fun buildRows(
         val prevKey = if (i > 0) periods[i - 1] else null
         val prevWeight = prevKey?.let { weightByPeriod.getValue(it).average() }
         val weightDelta = prevWeight?.let { avgWeight - it }
-        // "Actual" deficit = formula maintenance − logged intake (avg over logged days).
+        // "Actual" deficit = formula maintenance − intake, averaged over the period's days.
         val deficit = deficitCount[key]?.let { c -> deficitSum.getValue(key) / c }
         val avgIntake = deficit?.let { maintenance - it }
 
-        // Energy implied purely by the weight change, spread over the days it spans
-        // (the actual gap between weigh-in periods, so skipped weeks/months count right).
-        val days = prevKey?.let { ChronoUnit.DAYS.between(it, key).toDouble() }
-        val scaleDeficit = if (weightDelta != null && days != null && days > 0) {
-            -displayToKg(weightDelta, weightUnit) * KCAL_PER_KG / days
+        // Energy implied purely by the weight change, spread over the days it spans.
+        val gap = prevKey?.let { ChronoUnit.DAYS.between(it, key).toDouble() }
+        val scaleDeficit = if (weightDelta != null && gap != null && gap > 0) {
+            -displayToKg(weightDelta, weightUnit) * KCAL_PER_KG / gap
         } else {
             null
         }
@@ -525,7 +615,9 @@ private fun buildRows(
             impliedMaintenance = if (avgIntake != null && scaleDeficit != null) avgIntake + scaleDeficit else null,
             // Real intake: what you must have eaten if the formula and the scale are both right.
             impliedCalories = if (scaleDeficit != null && maintenance > 0) maintenance - scaleDeficit else null,
-            // Only a single-day row maps to one editable/deletable check-in.
+            weightImputed = weightImpByPeriod[key] == true,
+            caloriesImputed = calImpByPeriod[key] == true,
+            // Only a real same-day weigh-in is editable/deletable; an imputed day isn't.
             date = if (g == Granularity.Daily) key.toString() else null,
             checkInId = if (g == Granularity.Daily) checkInIds[key] else null,
         )

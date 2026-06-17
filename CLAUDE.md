@@ -246,6 +246,14 @@ Writes:
   Deficit modes are signed/green-coded; the level modes (maintenance/intake) are neutral.
   Expanding a row lists all four. Implied modes are noisy on Daily (single-day water swings),
   meaningful on Weekly/Monthly.
+  - **Missing-data imputation:** `buildRows` fits a quadratic (`quadFit`, y=b0+b1·t+b2·t²,
+    linear/constant fallback) to the real weight and calorie series and fills gaps day-by-day
+    from each series' first real day through today (forward only — no back-extrapolation).
+    Imputed days become their own Daily rows and feed the aggregates; any value drawing on an
+    imputed input renders **yellow** (`imputedYellow`) regardless of sign, the expanded detail
+    notes "Estimated …", and an imputed day offers "Log weight" (no Delete — no real check-in).
+    `HistoryRow` carries `weightImputed`/`caloriesImputed`; `EnergyMode.usesWeight/usesCalories`
+    decide whether a given mode's value is imputed.
 - **SettingsScreen** — base URL + API key (no VM; writes `SettingsStore` directly).
 - **MealScreen / MealViewModel** — build a recipe: scan / pick-from-library / manual
   barcode ingredients, optional finished-dish weight with container tare; autosaves draft.
