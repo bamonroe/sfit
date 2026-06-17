@@ -65,3 +65,16 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("androidx.compose.ui:ui-tooling-preview")
 }
+
+// Keep the freshly-built debug APK at the repo root as `sfit-debug.apk` for easy
+// sideloading. Git-ignored via the repo's `*.apk` rule. A plain copy (not a Copy
+// task) so we don't declare the repo root as a task output dir.
+val copyDebugApkToRoot by tasks.registering {
+    doLast {
+        val apk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
+        if (apk.exists()) apk.copyTo(rootProject.projectDir.resolve("sfit-debug.apk"), overwrite = true)
+    }
+}
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+    finalizedBy(copyDebugApkToRoot)
+}

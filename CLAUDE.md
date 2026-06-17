@@ -20,6 +20,9 @@ don't "fix" it by bumping Gradle.
 ```sh
 ./gradlew :app:assembleDebug      # -> app/build/outputs/apk/debug/app-debug.apk
 ```
+Every `assembleDebug` also copies the APK to the repo root as **`sfit-debug.apk`**
+(a `finalizedBy` task in `app/build.gradle.kts`) for easy sideloading; it's git-ignored
+via the `*.apk` rule.
 
 - Android SDK at `~/Android/Sdk` (see `local.properties`, git-ignored). `adb` lives in
   `~/Android/Sdk/platform-tools`.
