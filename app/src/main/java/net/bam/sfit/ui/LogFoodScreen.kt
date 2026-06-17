@@ -10,15 +10,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -29,7 +25,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,19 +59,10 @@ fun LogFoodScreen(vm: LibraryViewModel, onBack: () -> Unit) {
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            OutlinedTextField(
+            SearchField(
                 value = state.query,
                 onValueChange = vm::setQuery,
-                placeholder = { Text("Search your foods") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (state.query.isNotEmpty()) {
-                        IconButton(onClick = { vm.setQuery("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
-                singleLine = true,
+                placeholder = "Search your foods",
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             )
             HorizontalDivider()
@@ -86,7 +72,7 @@ fun LogFoodScreen(vm: LibraryViewModel, onBack: () -> Unit) {
                     items(state.foods, key = { it.id }) { food ->
                         Column(
                             modifier = Modifier.fillMaxWidth()
-                                .clickable { vm.openFood(food.id) }
+                                .clickable { vm.openFood(food) }
                                 .padding(horizontal = 16.dp, vertical = 14.dp),
                         ) {
                             Text(food.name, style = MaterialTheme.typography.bodyLarge)
@@ -96,9 +82,6 @@ fun LogFoodScreen(vm: LibraryViewModel, onBack: () -> Unit) {
                         }
                         HorizontalDivider()
                     }
-                }
-                if (state.detailLoading) {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp))
                 }
             }
         }

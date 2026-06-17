@@ -306,7 +306,14 @@ data class LibraryFood(
     val id: String = "",
     val name: String = "",
     val brand: String? = null,
-)
+    // The foods-paginated response already carries the default variant's nutrition;
+    // we keep it so detail/logging work offline without a per-tap foodDetail() call.
+    @SerialName("default_variant") val defaultVariant: BarcodeVariant = BarcodeVariant(),
+) {
+    /** Present this library food as a [BarcodeFood] for the detail/log/edit UI,
+     *  using the nutrition already fetched (no network call). */
+    fun toBarcodeFood(): BarcodeFood = BarcodeFood(id = id, name = name, brand = brand, defaultVariant = defaultVariant)
+}
 
 @Serializable
 data class FoodsPage(
@@ -474,6 +481,11 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** GET /foods/food-entries/{date} — diary entries logged on a day. */
     suspend fun foodEntriesForDate(date: String): List<FoodEntry> =
         decode(getBody("/foods/food-entries/$date"), emptyList())
+
+    /** GET /food-entries/range/{start}/{end} — every diary entry in a date range
+     *  in one request (note: mounted under /food-entries, not /foods). */
+    suspend fun foodEntriesForDateRange(start: String, end: String): List<FoodEntry> =
+        decode(getBody("/food-entries/range/$start/$end"), emptyList())
 
     /** GET /food-entry-meals/by-date/{date} — meals logged to the diary that day. */
     suspend fun foodEntryMealsForDate(date: String): List<FoodEntryMeal> =

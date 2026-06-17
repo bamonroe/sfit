@@ -82,10 +82,10 @@ fun EditMealScreen(meal: LibraryMeal, store: SettingsStore, onDone: () -> Unit) 
     var name by remember { mutableStateOf(meal.name) }
     val lines = remember {
         meal.foods.map {
-            EditLine(it.foodId, it.variantId, it.displayName, numStr(it.quantity), it.calories, it.servingSize)
+            EditLine(it.foodId, it.variantId, it.displayName, fullNum(it.quantity), it.calories, it.servingSize)
         }.toMutableStateList()
     }
-    var netWeight by remember { mutableStateOf(numStr(meal.totalGrams)) }
+    var netWeight by remember { mutableStateOf(fullNum(meal.totalGrams)) }
     var saving by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -290,19 +290,10 @@ private fun AddIngredientSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-            OutlinedTextField(
+            SearchField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("Search your foods") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear")
-                        }
-                    }
-                },
-                singleLine = true,
+                placeholder = "Search your foods",
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             )
             HorizontalDivider()
@@ -351,6 +342,3 @@ private fun PickerRow(title: String, subtitle: String?, onClick: () -> Unit) {
     }
     HorizontalDivider()
 }
-
-private fun numStr(d: Double): String =
-    if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()

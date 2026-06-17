@@ -38,7 +38,6 @@ data class LibraryState(
     val query: String = "",
     val error: String? = null,
     val detail: BarcodeFood? = null,     // food detail shown in the sheet
-    val detailLoading: Boolean = false,
     val mealDetail: LibraryMeal? = null, // meal detail shown in the sheet
     val message: String? = null,
 )
@@ -49,7 +48,6 @@ private data class LibraryUi(
     val reverse: Boolean = false,
     val query: String = "",
     val detail: BarcodeFood? = null,
-    val detailLoading: Boolean = false,
     val mealDetail: LibraryMeal? = null,
     val message: String? = null,
 )
@@ -73,7 +71,6 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
                 query = u.query,
                 error = if (lib.items.isEmpty() && lib.meals.isEmpty()) error else null,
                 detail = u.detail,
-                detailLoading = u.detailLoading,
                 mealDetail = u.mealDetail,
                 message = u.message,
             )
@@ -112,19 +109,9 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
         return (if (reverse) sorted.reversed() else sorted).map { it.food }
     }
 
-    fun openFood(id: String) {
-        viewModelScope.launch {
-            val s = repo.store.settings.first()
-            if (!s.isConfigured) return@launch
-            ui.update { it.copy(detailLoading = true, detail = null) }
-            try {
-                val food = SparkyApi(s.baseUrl, s.apiKey).foodDetail(id)
-                ui.update { it.copy(detailLoading = false, detail = food) }
-            } catch (e: Exception) {
-                ui.update { it.copy(detailLoading = false, message = e.message ?: "Couldn't load food") }
-            }
-        }
-    }
+    /** Open a food's detail sheet from already-fetched data — instant and works
+     *  offline, no per-tap network call (the library response carries its variant). */
+    fun openFood(food: LibraryFood) = ui.update { it.copy(detail = food.toBarcodeFood()) }
 
     fun closeDetail() = ui.update { it.copy(detail = null) }
     fun openMeal(meal: LibraryMeal) = ui.update { it.copy(mealDetail = meal) }
@@ -145,7 +132,7 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
                     date = LocalDate.now().toString(),
                 )
                 ui.update { it.copy(detail = null, message = "Logged ${food.name}") }
-                repo.refresh()
+                repo.refreshToday()
                 onLogged()
             } catch (e: Exception) {
                 ui.update { it.copy(message = e.message ?: "Log failed") }
@@ -160,7 +147,7 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
             try {
                 SparkyApi(s.baseUrl, s.apiKey).logMeal(meal, grams, mealType, LocalDate.now().toString())
                 ui.update { it.copy(mealDetail = null, message = "Logged ${meal.name}") }
-                repo.refresh()
+                repo.refreshToday()
                 onLogged()
             } catch (e: Exception) {
                 ui.update { it.copy(message = e.message ?: "Log failed") }

@@ -9,7 +9,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-/** A food plus its cached usage stats, so either sort order works offline. */
+/** A food plus its cached usage stats and default-variant nutrition, so sorting
+ *  and the detail/log sheets all work offline. */
 @Serializable
 data class CachedFood(
     val id: String = "",
@@ -17,6 +18,7 @@ data class CachedFood(
     val brand: String? = null,
     val count: Int = 0,
     val lastDate: String = "",
+    val variant: BarcodeVariant = BarcodeVariant(),
 )
 
 /** Everything the Library needs, cached locally. */

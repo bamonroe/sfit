@@ -159,7 +159,7 @@ private fun ProviderRow(food: BarcodeFood, importing: Boolean, onClick: () -> Un
                 food.brand?.takeIf { it.isNotBlank() }?.let { append(it) }
                 if (v.calories > 0 && v.servingSize > 0) {
                     if (isNotEmpty()) append("  ·  ")
-                    append("${v.calories.roundToInt()} kcal / ${fmtServing(v.servingSize)} ${v.servingUnit}")
+                    append("${v.calories.roundToInt()} kcal / ${fmtNum(v.servingSize)} ${v.servingUnit}")
                 }
             }
             if (sub.isNotBlank()) {
@@ -171,6 +171,3 @@ private fun ProviderRow(food: BarcodeFood, importing: Boolean, onClick: () -> Un
         }
     }
 }
-
-private fun fmtServing(d: Double): String =
-    if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)

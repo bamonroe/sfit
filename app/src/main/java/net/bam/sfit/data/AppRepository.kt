@@ -104,6 +104,9 @@ class AppRepository(
                 _day.value = DayData(c.goalCalories, c.consumedCalories, c.entries, c.mealNames, c.mealGrams)
             }
             historyCache.load()?.let { c ->
+                // Restore the unit so an offline weigh-in still converts correctly
+                // (the var otherwise defaults to "kg" until the first successful refresh).
+                weightUnit = c.unit
                 _history.value = HistoryData(
                     c.unit,
                     c.byGranularity.mapValues { (_, rows) ->
@@ -113,7 +116,7 @@ class AppRepository(
             }
             libraryCache.load()?.let { c ->
                 val items = c.foods.map {
-                    FoodUsage(LibraryFood(it.id, it.name, it.brand), Usage(it.count, it.lastDate))
+                    FoodUsage(LibraryFood(it.id, it.name, it.brand, it.variant), Usage(it.count, it.lastDate))
                 }
                 _library.value = LibraryData(items, c.meals, c.totalFoods)
             }
@@ -207,7 +210,10 @@ class AppRepository(
                     libraryCache.save(
                         CachedLibrary(
                             foods = items.map {
-                                CachedFood(it.food.id, it.food.name, it.food.brand, it.usage.count, it.usage.lastDate)
+                                CachedFood(
+                                    it.food.id, it.food.name, it.food.brand,
+                                    it.usage.count, it.usage.lastDate, it.food.defaultVariant,
+                                )
                             },
                             meals = meals,
                             totalFoods = foodsPage.totalCount,
@@ -219,6 +225,42 @@ class AppRepository(
                 _error.value = e.message ?: "Failed to refresh"
             } finally {
                 _refreshing.value = false
+            }
+        }
+    }
+
+    /** Reload only Today's diary (goal, entries, logged meals) — a light reconcile
+     *  after a diary edit/log, instead of re-pulling the library, history and usage.
+     *  Per-food usage stays as-is until the next full [refresh]. */
+    fun refreshToday() {
+        scope.launch {
+            val s = store.settings.first()
+            if (!s.isConfigured) return@launch
+            try {
+                val api = SparkyApi(s.baseUrl, s.apiKey)
+                val today = LocalDate.now().toString()
+                coroutineScope {
+                    val summaryD = async { api.dailySummary(today) }
+                    val loggedMealsD = async {
+                        runCatching { api.foodEntryMealsForDate(today) }.getOrDefault(emptyList())
+                    }
+                    val summary = summaryD.await()
+                    val loggedMeals = loggedMealsD.await()
+                    val mealNames = loggedMeals.associate { it.id to it.name }
+                    val mealGrams = loggedMeals.associate { it.id to it.quantity }
+                    _day.value = DayData(
+                        summary.goals.calories, summary.consumedCalories, summary.foodEntries,
+                        mealNames, mealGrams,
+                    )
+                    dayCache.save(
+                        CachedDay(
+                            today, summary.goals.calories, summary.consumedCalories,
+                            summary.foodEntries, mealNames, mealGrams,
+                        ),
+                    )
+                }
+            } catch (e: Exception) {
+                // Leave the optimistic state; a later full refresh reconciles.
             }
         }
     }
@@ -262,7 +304,7 @@ class AppRepository(
             } catch (e: Exception) {
                 onError(e.message ?: "Update failed")
             }
-            refresh() // reconcile with the server (success or revert)
+            refreshToday() // reconcile Today with the server (success or revert)
         }
     }
 
@@ -278,7 +320,7 @@ class AppRepository(
             } catch (e: Exception) {
                 onError(e.message ?: "Delete failed")
             }
-            refresh() // reconcile with the server (success or revert)
+            refreshToday() // reconcile Today with the server (success or revert)
         }
     }
 
@@ -314,7 +356,7 @@ class AppRepository(
             } catch (e: Exception) {
                 onError(e.message ?: "Update failed")
             }
-            refresh()
+            refreshToday()
         }
     }
 
@@ -336,7 +378,7 @@ class AppRepository(
             } catch (e: Exception) {
                 onError(e.message ?: "Delete failed")
             }
-            refresh() // reconcile with the server (success or revert)
+            refreshToday() // reconcile Today with the server (success or revert)
         }
     }
 
@@ -362,14 +404,13 @@ class AppRepository(
         }
     }
 
-    /** Aggregate the last [USAGE_WINDOW_DAYS] days of diary entries into per-food usage. */
-    private suspend fun computeUsage(api: SparkyApi): Map<String, Usage> = coroutineScope {
+    /** Aggregate the last [USAGE_WINDOW_DAYS] days of diary entries into per-food usage.
+     *  One range request rather than a fan-out of per-day calls. */
+    private suspend fun computeUsage(api: SparkyApi): Map<String, Usage> {
         val today = LocalDate.now()
-        val entries = (0 until USAGE_WINDOW_DAYS)
-            .map { offset -> today.minusDays(offset.toLong()).toString() }
-            .map { date -> async { runCatching { api.foodEntriesForDate(date) }.getOrDefault(emptyList()) } }
-            .awaitAll()
-            .flatten()
+        val start = today.minusDays((USAGE_WINDOW_DAYS - 1).toLong()).toString()
+        val entries = runCatching { api.foodEntriesForDateRange(start, today.toString()) }
+            .getOrDefault(emptyList())
         val acc = HashMap<String, UsageAcc>()
         for (e in entries) {
             if (e.foodId.isBlank()) continue
@@ -377,7 +418,7 @@ class AppRepository(
             u.count++
             if (e.entryDate > u.lastDate) u.lastDate = e.entryDate
         }
-        acc.mapValues { Usage(it.value.count, it.value.lastDate) }
+        return acc.mapValues { Usage(it.value.count, it.value.lastDate) }
     }
 }
 

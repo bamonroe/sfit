@@ -129,17 +129,32 @@ Layers:
   `coroutineScope { async {…} }`, then updates all flows and persists all caches
   (`AppRepository.kt:133`). Concurrent pulls are coalesced (`refreshJob?.isActive`).
 - Pull-to-refresh **anywhere** calls the same `refresh()`.
-- On init it renders cached data immediately (day cache only if its date == today),
-  then refreshes when settings become configured / change (`AppRepository.kt:100`).
+- On init it renders cached data immediately (day cache only if its date == today) and
+  restores the weight unit from the history cache (so an offline weigh-in still converts
+  correctly), then refreshes when settings become configured / change (`AppRepository.kt:100`).
+  The app is fully openable offline: each ViewModel suppresses `repo.error` when its cache
+  is non-empty, so all three screens render from cache without internet.
 - **`Repo.get(context)`** is a process-wide singleton (double-checked locking) so data
   survives Activity recreation (`AppRepository.kt:454`).
 - **Optimistic updates** for diary edits/deletes: mutate `_day` locally at once, fire the
   server call in the background, then `refresh()` to reconcile (reverting to server truth
   on failure). See `updateEntry`, `deleteEntry`, `updateLoggedMeal`, `deleteLoggedMeal`.
-- **Usage** (`count`, `lastDate` per food) is computed client-side by scanning the last
-  `USAGE_WINDOW_DAYS = 28` days of diary entries (`computeUsage`, `AppRepository.kt:366`).
-  This is what powers the Library's "by frequency" and "by last log" sorts — note the
+- **Usage** (`count`, `lastDate` per food) is computed client-side from the last
+  `USAGE_WINDOW_DAYS = 28` days of diary entries via **one** ranged call
+  (`foodEntriesForDateRange` → `/food-entries/range/{start}/{end}`), not a per-day fan-out
+  (`computeUsage`). This powers the Library's "by frequency" / "by last log" sorts — the
   28-day window means older-but-unlogged foods have count 0 / empty lastDate.
+- **`refreshToday()`** is a light reconcile (today's `dailySummary` + `foodEntryMeals` only)
+  used after diary edits/logs (`updateEntry`/`deleteEntry`/`updateLoggedMeal`/
+  `deleteLoggedMeal`, and `logFood`/`logMeal`), instead of re-pulling the whole library +
+  history + usage. Full `refresh()` is reserved for pull-to-refresh, weight logging, and
+  library mutations (food/meal create/delete). Per-food usage therefore updates on the next
+  full refresh, not on every single log.
+- **Reuse-fetched data:** `LibraryFood` carries the `default_variant` nutrition that the
+  foods response already returns, cached in `CachedFood.variant`. `openFood(food)` builds a
+  `BarcodeFood` from it (`LibraryFood.toBarcodeFood()`) — so the detail/log/edit sheet opens
+  instantly, works offline, and skips a per-tap `foodDetail()` call. (`foodDetail` is still
+  used by EditMealScreen's add-ingredient path.)
 
 ### `SparkyApi` — REST client (OkHttp + kotlinx.serialization)
 - JSON config: `ignoreUnknownKeys = true`, `coerceInputValues = true`,
@@ -188,7 +203,9 @@ Reads:
 - `GET /daily-summary?date=` → today's goal + consumed + entries
 - `GET /foods/foods-paginated?page=&itemsPerPage=` → library foods (see §2 caveat)
 - `GET /meals?filter=mine` → recipes
-- `GET /foods/food-entries/{date}` → diary entries for a day (drives usage)
+- `GET /foods/food-entries/{date}` → diary entries for a day
+- `GET /food-entries/range/{start}/{end}` → all diary entries in a range, one call
+  (drives usage; note the `/food-entries` mount, distinct from the `/foods` one above)
 - `GET /food-entry-meals/by-date/{date}` → logged-meal grouping for a day
 - `GET /foods/{id}` → full food detail (BarcodeFood); `GET /foods/barcode/{barcode}`
 - `GET /user-preferences` → weight unit, activity level
@@ -246,8 +263,11 @@ Writes:
   snackbar.showSnackbar(it); vm.clearMessage() }`.
 - **Pull-to-refresh:** every list screen wraps its `LazyColumn` in `PullToRefreshBox`
   whose `onRefresh` calls the VM's `load()`/`refresh()`.
-- **Number formatting:** show integers without a trailing `.0` and one decimal otherwise
-  (the `gFmt`/`fmt`/`numStr`-style helpers).
+- **Shared composables/helpers** live in `ui/UiComponents.kt` (same `net.bam.sfit.ui`
+  package, so no import needed): `fmtNum(d)` (integer if whole, else one decimal — the
+  app-wide display formatter), `fullNum(d)` (full precision, for prefilling editable number
+  fields), `MacroCell`/`MacroRow` (protein/carbs/fat), `Field`/`NumField` (text/number
+  form inputs), and `SearchField`. Reach for these before re-rolling a local copy.
 
 ---
 

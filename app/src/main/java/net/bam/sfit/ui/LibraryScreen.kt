@@ -19,11 +19,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Sort
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -132,7 +129,12 @@ fun LibraryScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            LibrarySearchField(query = state.query, onQuery = vm::setQuery)
+            SearchField(
+                value = state.query,
+                onValueChange = vm::setQuery,
+                placeholder = "Search foods & meals",
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            )
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             when {
                 state.error != null -> Text(
@@ -163,13 +165,10 @@ fun LibraryScreen(
                         }
                         if (state.foods.isEmpty() && !state.loading) item { EmptyRow("No foods yet") }
                         items(state.foods, key = { "f" + it.id }) { food ->
-                            FoodRow(food, onClick = { vm.openFood(food.id) })
+                            FoodRow(food, onClick = { vm.openFood(food) })
                         }
                     }
                 }
-            }
-            if (state.detailLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp))
             }
             }
         }
@@ -233,24 +232,6 @@ fun LibraryScreen(
     }
 }
 
-@Composable
-private fun LibrarySearchField(query: String, onQuery: (String) -> Unit) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQuery,
-        placeholder = { Text("Search foods & meals") },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQuery("") }) {
-                    Icon(Icons.Default.Clear, contentDescription = "Clear search")
-                }
-            }
-        },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-    )
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -276,14 +257,7 @@ private fun MealDetailSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(top = 12.dp),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Macro("Protein", meal.totalProtein, Modifier.weight(1f))
-                Macro("Carbs", meal.totalCarbs, Modifier.weight(1f))
-                Macro("Fat", meal.totalFat, Modifier.weight(1f))
-            }
+            MacroRow(meal.totalProtein, meal.totalCarbs, meal.totalFat, Modifier.padding(top = 8.dp))
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
             Text("Ingredients", style = MaterialTheme.typography.titleSmall,
@@ -296,7 +270,7 @@ private fun MealDetailSheet(
                     Text(f.displayName, style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f))
                     Text(
-                        "${fmt(f.quantity)} ${f.unit} · ${f.kcal.roundToInt()} kcal",
+                        "${fmtNum(f.quantity)} ${f.unit} · ${f.kcal.roundToInt()} kcal",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -391,20 +365,13 @@ private fun FoodDetailSheet(
             }
 
             Text(
-                "${v.calories.roundToInt()} kcal  ·  per ${fmt(v.servingSize)} ${v.servingUnit}",
+                "${v.calories.roundToInt()} kcal  ·  per ${fmtNum(v.servingSize)} ${v.servingUnit}",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(top = 16.dp),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Macro("Protein", v.protein, Modifier.weight(1f))
-                Macro("Carbs", v.carbs, Modifier.weight(1f))
-                Macro("Fat", v.fat, Modifier.weight(1f))
-            }
+            MacroRow(v.protein, v.carbs, v.fat, Modifier.padding(top = 12.dp))
             Text(
-                "Fiber ${fmt(v.dietaryFiber)}g · Sugar ${fmt(v.sugars)}g · Sodium ${v.sodium.roundToInt()}mg",
+                "Fiber ${fmtNum(v.dietaryFiber)}g · Sugar ${fmtNum(v.sugars)}g · Sodium ${v.sodium.roundToInt()}mg",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
@@ -450,8 +417,8 @@ internal fun LogFoodDialog(
     // Input mode: by grams (enter weight) or by calories (enter a kcal target
     // and back out the grams needed to hit it).
     var byCalories by remember { mutableStateOf(false) }
-    var qty by remember { mutableStateOf(fmt(v.servingSize)) }
-    var kcalTarget by remember { mutableStateOf(fmt(v.calories)) }
+    var qty by remember { mutableStateOf(fmtNum(v.servingSize)) }
+    var kcalTarget by remember { mutableStateOf(fmtNum(v.calories)) }
 
     val grams = if (byCalories) {
         if (hasCalories) (kcalTarget.toDoubleOrNull() ?: 0.0) * serving / v.calories else 0.0
@@ -486,7 +453,7 @@ internal fun LogFoodDialog(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
                     Text(
-                        if (hasCalories) "= ${fmt(grams)} g" else "No calorie data for this food",
+                        if (hasCalories) "= ${fmtNum(grams)} g" else "No calorie data for this food",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
@@ -547,8 +514,8 @@ private fun LogMealDialog(
     // Input mode: by grams (enter weight) or by calories (enter a kcal target
     // and back out the grams needed to hit it).
     var byCalories by remember { mutableStateOf(false) }
-    var qty by remember { mutableStateOf(fmt(meal.totalGrams)) }
-    var kcalTarget by remember { mutableStateOf(fmt(meal.totalCalories)) }
+    var qty by remember { mutableStateOf(fmtNum(meal.totalGrams)) }
+    var kcalTarget by remember { mutableStateOf(fmtNum(meal.totalCalories)) }
 
     val grams = if (byCalories) {
         if (hasCalories) (kcalTarget.toDoubleOrNull() ?: 0.0) * total / meal.totalCalories else 0.0
@@ -583,7 +550,7 @@ private fun LogMealDialog(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
                     Text(
-                        if (hasCalories) "= ${fmt(grams)} g  ·  of ${fmt(meal.totalGrams)} g recipe"
+                        if (hasCalories) "= ${fmtNum(grams)} g  ·  of ${fmtNum(meal.totalGrams)} g recipe"
                         else "No calorie data for this recipe",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -598,7 +565,7 @@ private fun LogMealDialog(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     )
                     Text(
-                        "${kcal.roundToInt()} kcal  ·  of ${fmt(meal.totalGrams)} g recipe",
+                        "${kcal.roundToInt()} kcal  ·  of ${fmtNum(meal.totalGrams)} g recipe",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
@@ -622,17 +589,6 @@ private fun LogMealDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
-
-@Composable
-private fun Macro(label: String, grams: Double, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("${fmt(grams)}g", style = MaterialTheme.typography.titleMedium)
-        Text(label, style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-private fun fmt(d: Double): String = if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
 
 @Composable
 private fun SectionHeader(label: String, count: Int, suffix: String? = null) {

@@ -209,7 +209,7 @@ private fun EntryRow(e: FoodEntry, onClick: () -> Unit) {
             Text(
                 buildString {
                     val q = e.quantity
-                    append(if (q == q.toLong().toDouble()) q.toLong().toString() else "%.1f".format(q))
+                    append(fmtNum(q))
                     append(" ").append(e.displayUnit)
                     e.brandName?.let { append("  ·  ").append(it) }
                 },
@@ -268,7 +268,7 @@ private fun buildDiaryRows(
 
 private fun qtyLabel(e: FoodEntry): String {
     val q = e.quantity
-    val num = if (q == q.toLong().toDouble()) q.toLong().toString() else "%.1f".format(q)
+    val num = fmtNum(q)
     return "$num ${e.displayUnit}"
 }
 
@@ -291,7 +291,7 @@ private fun MealRow(meal: DiaryMeal, onClick: () -> Unit) {
             Column {
                 Text(meal.name, style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "${gFmt(meal.grams)} g  ·  ${meal.entries.size} ingredients",
+                    "${fmtNum(meal.grams)} g  ·  ${meal.entries.size} ingredients",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -316,7 +316,7 @@ private fun MealEntrySheet(
     val sheetState = rememberModalBottomSheetState()
     val currentTotal = meal.grams
     var text by remember {
-        mutableStateOf(if (currentTotal == currentTotal.toLong().toDouble()) currentTotal.toLong().toString() else "%.1f".format(currentTotal))
+        mutableStateOf(fmtNum(currentTotal))
     }
     val grams = text.trim().toDoubleOrNull()
     val valid = grams != null && grams > 0
@@ -389,7 +389,7 @@ private fun EntryEditSheet(
     val sheetState = rememberModalBottomSheetState()
     var text by remember {
         val q = entry.quantity
-        mutableStateOf(if (q == q.toLong().toDouble()) q.toLong().toString() else "%.1f".format(q))
+        mutableStateOf(fmtNum(q))
     }
     val qty = text.trim().toDoubleOrNull()
     val valid = qty != null && qty > 0
@@ -418,16 +418,9 @@ private fun EntryEditSheet(
                 "${kcal.roundToInt()} kcal",
                 style = MaterialTheme.typography.titleMedium,
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                MacroCell("Protein", entry.protein * scale, Modifier.weight(1f))
-                MacroCell("Carbs", entry.carbs * scale, Modifier.weight(1f))
-                MacroCell("Fat", entry.fat * scale, Modifier.weight(1f))
-            }
+            MacroRow(entry.protein * scale, entry.carbs * scale, entry.fat * scale)
             Text(
-                "Fiber ${gFmt(entry.dietaryFiber * scale)}g · Sugar ${gFmt(entry.sugars * scale)}g · " +
+                "Fiber ${fmtNum(entry.dietaryFiber * scale)}g · Sugar ${fmtNum(entry.sugars * scale)}g · " +
                     "Sodium ${(entry.sodium * scale).roundToInt()}mg",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -449,17 +442,6 @@ private fun EntryEditSheet(
         }
     }
 }
-
-@Composable
-private fun MacroCell(label: String, grams: Double, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("${gFmt(grams)}g", style = MaterialTheme.typography.titleMedium)
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-private fun gFmt(d: Double): String =
-    if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
 
 @Composable
 private fun RemainingCalories(state: DayState) {

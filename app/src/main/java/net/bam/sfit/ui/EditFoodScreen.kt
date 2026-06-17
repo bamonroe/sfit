@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -20,7 +19,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,7 +30,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -47,12 +44,12 @@ fun EditFoodScreen(food: BarcodeFood, store: SettingsStore, onDone: () -> Unit) 
     val v = food.defaultVariant
     var name by remember { mutableStateOf(food.name) }
     var brand by remember { mutableStateOf(food.brand ?: "") }
-    var serving by remember { mutableStateOf(numStr(v.servingSize)) }
+    var serving by remember { mutableStateOf(fullNum(v.servingSize)) }
     var unit by remember { mutableStateOf(v.servingUnit) }
-    var calories by remember { mutableStateOf(numStr(v.calories)) }
-    var protein by remember { mutableStateOf(numStr(v.protein)) }
-    var carbs by remember { mutableStateOf(numStr(v.carbs)) }
-    var fat by remember { mutableStateOf(numStr(v.fat)) }
+    var calories by remember { mutableStateOf(fullNum(v.calories)) }
+    var protein by remember { mutableStateOf(fullNum(v.protein)) }
+    var carbs by remember { mutableStateOf(fullNum(v.carbs)) }
+    var fat by remember { mutableStateOf(fullNum(v.fat)) }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -132,6 +129,7 @@ fun EditFoodScreen(food: BarcodeFood, store: SettingsStore, onDone: () -> Unit) 
             ) { Text("Delete food", color = MaterialTheme.colorScheme.error) }
         }
     }
+    // Field, NumField and the full-precision number formatter now live in UiComponents.kt.
 
     if (confirmDelete) {
         AlertDialog(
@@ -158,24 +156,3 @@ fun EditFoodScreen(food: BarcodeFood, store: SettingsStore, onDone: () -> Unit) 
         )
     }
 }
-
-@Composable
-internal fun Field(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier) {
-    OutlinedTextField(value = value, onValueChange = onChange, label = { Text(label) },
-        singleLine = true, modifier = modifier)
-}
-
-@Composable
-internal fun NumField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = { onChange(it.filter { c -> c.isDigit() || c == '.' }) },
-        label = { Text(label) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = modifier,
-    )
-}
-
-private fun numStr(d: Double): String =
-    if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()

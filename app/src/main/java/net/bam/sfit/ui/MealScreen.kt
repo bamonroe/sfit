@@ -213,10 +213,10 @@ private fun FinalWeightSection(
     onAddContainer: () -> Unit,
     onManageContainers: () -> Unit,
 ) {
-    var text by remember { mutableStateOf(grossGrams?.let { gramStr(it) } ?: "") }
+    var text by remember { mutableStateOf(grossGrams?.let { fmtNum(it) } ?: "") }
     // Populate from a restored draft once, without clobbering live typing.
     LaunchedEffect(grossGrams) {
-        if (text.isBlank() && grossGrams != null) text = gramStr(grossGrams)
+        if (text.isBlank() && grossGrams != null) text = fmtNum(grossGrams)
     }
     var menuOpen by remember { mutableStateOf(false) }
     val selected = containers.firstOrNull { it.id == containerId }
@@ -354,9 +354,6 @@ private fun ManageContainersDialog(
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
 }
-
-private fun gramStr(d: Double): String =
-    if (d == d.toLong().toDouble()) d.toLong().toString() else "%.1f".format(d)
 
 @Composable
 private fun IngredientRow(ing: DraftIngredient, onGrams: (Double) -> Unit, onRemove: () -> Unit) {
