@@ -246,9 +246,11 @@ Writes:
   Deficit modes are signed/green-coded; the level modes (maintenance/intake) are neutral.
   Expanding a row lists all four. Implied modes are noisy on Daily (single-day water swings),
   meaningful on Weekly/Monthly.
-  - **Missing-data imputation:** `buildRows` fits a quadratic (`quadFit`, y=b0+b1·t+b2·t²,
-    linear/constant fallback) to the real weight and calorie series and fills gaps day-by-day
-    from each series' first real day through today (forward only — no back-extrapolation).
+  - **Missing-data imputation:** `buildRows` fills each missing day from a *local* quadratic
+    (`quadFit`, y=b0+b1·t+b2·t², linear/constant fallback) fit over only the previous
+    `IMPUTE_WINDOW` (10) real points of that series — kept local to avoid wild global
+    extrapolation; the prior points needn't be contiguous. Needs ≥1 prior point, so days
+    before a series' first observation are never back-filled; forward gaps up to today are.
     Imputed days become their own Daily rows and feed the aggregates; any value drawing on an
     imputed input renders **yellow** (`imputedYellow`) regardless of sign, the expanded detail
     notes "Estimated …", and an imputed day offers "Log weight" (no Delete — no real check-in).

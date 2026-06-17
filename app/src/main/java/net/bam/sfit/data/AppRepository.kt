@@ -24,6 +24,10 @@ private const val HISTORY_MONTHS = 11L
 // Used to translate a weight change into an implied energy (de)surplus.
 private const val KCAL_PER_KG = 7700.0
 
+// A missing day is imputed from a local quadratic over the previous N real points
+// of that series (not the whole history), keeping each prediction local.
+private const val IMPUTE_WINDOW = 10
+
 // ---- Shared data types (single source of truth for the whole app) ----
 
 enum class Granularity { Daily, Weekly, Monthly }
@@ -550,14 +554,10 @@ private fun buildRows(
     }
     if (realKg.isEmpty() && realCal.isEmpty()) return emptyList()
 
-    // Quadratic fits over the real data, used to impute the gaps (and extrapolate
-    // forward to today). We don't fill before the first real day — projecting a
-    // parabola into the pre-tracking void only produces nonsense.
-    val wFit = quadFit(realKg.map { it.key.toEpochDay().toDouble() to it.value })
-    val cFit = quadFit(realCal.map { it.key.toEpochDay().toDouble() to it.value })
-    val firstW = realKg.keys.minOrNull()
-    val firstC = realCal.keys.minOrNull()
-    val start = listOfNotNull(firstW, firstC).min()
+    // Real observations as sorted (epochDay, value) lists, for the local fits.
+    val kgList = realKg.entries.map { it.key.toEpochDay().toDouble() to it.value }
+    val calList = realCal.entries.map { it.key.toEpochDay().toDouble() to it.value }
+    val start = listOfNotNull(realKg.keys.minOrNull(), realCal.keys.minOrNull()).min()
     val end = LocalDate.now()
 
     // Per period: weights (real + imputed), whether any day was imputed, and the
@@ -568,18 +568,29 @@ private fun buildRows(
     val deficitCount = hashMapOf<LocalDate, Int>()
     val calImpByPeriod = hashMapOf<LocalDate, Boolean>()
 
+    // Impute day [x] from a local quadratic over the previous up-to-IMPUTE_WINDOW
+    // real points (those strictly before x, given by [idx]). Needs ≥1 prior point,
+    // so days before a series' first observation are never back-filled. The prior
+    // points need not be contiguous — gaps are skipped, not back-extrapolated into.
+    fun predict(series: List<Pair<Double, Double>>, idx: Int, x: Double): Double? =
+        if (idx == 0) null else quadFit(series.subList(maxOf(0, idx - IMPUTE_WINDOW), idx))?.invoke(x)
+
+    var wIdx = 0
+    var cIdx = 0
     var d = start
     while (!d.isAfter(end)) {
         val key = periodStart(d, g)
         val x = d.toEpochDay().toDouble()
-        // Impute only from each series' own first real day onward (never back-extrapolate
-        // before tracking began); forward gaps up to today are filled.
-        val kg = realKg[d] ?: if (firstW != null && !d.isBefore(firstW)) wFit?.invoke(x) else null
+        // Advance each cursor to the count of real points strictly before today.
+        while (wIdx < kgList.size && kgList[wIdx].first < x) wIdx++
+        while (cIdx < calList.size && calList[cIdx].first < x) cIdx++
+
+        val kg = realKg[d] ?: predict(kgList, wIdx, x)
         if (kg != null) {
             weightByPeriod.getOrPut(key) { mutableListOf() }.add(kgToDisplay(kg, weightUnit))
             if (realKg[d] == null) weightImpByPeriod[key] = true
         }
-        val cal = realCal[d] ?: if (firstC != null && !d.isBefore(firstC)) cFit?.invoke(x) else null
+        val cal = realCal[d] ?: predict(calList, cIdx, x)
         if (cal != null) {
             deficitSum[key] = (deficitSum[key] ?: 0.0) + (maintenance - cal)
             deficitCount[key] = (deficitCount[key] ?: 0) + 1
