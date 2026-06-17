@@ -24,10 +24,14 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -86,13 +90,42 @@ fun LibraryScreen(
             TopAppBar(
                 title = { Text("Library") },
                 actions = {
-                    IconButton(onClick = {
-                        vm.setSortMode(
-                            if (state.sortMode == SortMode.Frequency) SortMode.Alphabetical
-                            else SortMode.Frequency,
-                        )
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Toggle sort")
+                    var sortMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { sortMenu = true }) {
+                            Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = "Sort")
+                        }
+                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                            Text(
+                                "Sort by",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                            SortMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = { Text(mode.label) },
+                                    onClick = { vm.setSortMode(mode) },
+                                    leadingIcon = {
+                                        RadioButton(
+                                            selected = state.sortMode == mode,
+                                            onClick = { vm.setSortMode(mode) },
+                                        )
+                                    },
+                                )
+                            }
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text("Reverse") },
+                                onClick = { vm.toggleReverse() },
+                                trailingIcon = {
+                                    Switch(
+                                        checked = state.reverse,
+                                        onCheckedChange = { vm.toggleReverse() },
+                                    )
+                                },
+                            )
+                        }
                     }
                 },
             )
@@ -125,7 +158,7 @@ fun LibraryScreen(
                         item {
                             SectionHeader(
                                 "Foods", state.totalFoods,
-                                if (state.sortMode == SortMode.Frequency) "by frequency" else "A–Z",
+                                state.sortMode.label + if (state.reverse) ", reversed" else "",
                             )
                         }
                         if (state.foods.isEmpty() && !state.loading) item { EmptyRow("No foods yet") }

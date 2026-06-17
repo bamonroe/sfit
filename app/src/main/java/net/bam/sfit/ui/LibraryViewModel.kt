@@ -18,7 +18,15 @@ import net.bam.sfit.data.LibraryMeal
 import net.bam.sfit.data.SparkyApi
 import java.time.LocalDate
 
-enum class SortMode { Frequency, Alphabetical }
+enum class SortMode { Alphabetical, Frequency, LastLog }
+
+/** Short label for the sort mode, shown in the popup and the Foods section header. */
+val SortMode.label: String
+    get() = when (this) {
+        SortMode.Alphabetical -> "A–Z"
+        SortMode.Frequency -> "by frequency"
+        SortMode.LastLog -> "by last log"
+    }
 
 data class LibraryState(
     val loading: Boolean = false,
@@ -26,6 +34,7 @@ data class LibraryState(
     val totalFoods: Int = 0,
     val meals: List<LibraryMeal> = emptyList(),
     val sortMode: SortMode = SortMode.Frequency,
+    val reverse: Boolean = false,
     val query: String = "",
     val error: String? = null,
     val detail: BarcodeFood? = null,     // food detail shown in the sheet
@@ -37,6 +46,7 @@ data class LibraryState(
 /** Library UI bits that aren't shared app data (live only in this screen). */
 private data class LibraryUi(
     val sortMode: SortMode = SortMode.Frequency,
+    val reverse: Boolean = false,
     val query: String = "",
     val detail: BarcodeFood? = null,
     val detailLoading: Boolean = false,
@@ -50,7 +60,7 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
     val state: StateFlow<LibraryState> =
         combine(repo.library, repo.refreshing, repo.error, ui) { lib, loading, error, u ->
             val q = u.query.trim()
-            val foods = sortFoods(lib.items.filter { it.matches(q) }, u.sortMode)
+            val foods = sortFoods(lib.items.filter { it.matches(q) }, u.sortMode, u.reverse)
             val meals = lib.meals.filter { it.name.contains(q, ignoreCase = true) }
             LibraryState(
                 loading = loading,
@@ -59,6 +69,7 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
                 totalFoods = if (q.isBlank()) lib.total else foods.size,
                 meals = meals,
                 sortMode = u.sortMode,
+                reverse = u.reverse,
                 query = u.query,
                 error = if (lib.items.isEmpty() && lib.meals.isEmpty()) error else null,
                 detail = u.detail,
@@ -71,8 +82,11 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
     /** Pull-to-refresh: reload the whole app's data. */
     fun load() = repo.refresh()
 
-    /** Switch sort order — no network, the screen re-derives from shared data. */
+    /** Switch sort field — no network, the screen re-derives from shared data. */
     fun setSortMode(mode: SortMode) = ui.update { it.copy(sortMode = mode) }
+
+    /** Flip the current sort direction. */
+    fun toggleReverse() = ui.update { it.copy(reverse = !it.reverse) }
 
     /** Filter the library by name/brand — no network, all data is cached. */
     fun setQuery(q: String) = ui.update { it.copy(query = q) }
@@ -81,13 +95,21 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
         q.isBlank() || food.name.contains(q, ignoreCase = true) ||
             (food.brand?.contains(q, ignoreCase = true) ?: false)
 
-    private fun sortFoods(items: List<FoodUsage>, mode: SortMode): List<LibraryFood> = when (mode) {
-        SortMode.Alphabetical -> items.sortedBy { it.food.name.lowercase() }.map { it.food }
-        SortMode.Frequency -> items.sortedWith(
-            compareByDescending<FoodUsage> { it.usage.count }
+    /** Sort by the chosen field in its natural direction, then flip the whole
+     *  list (ties included) when [reverse] is set. */
+    private fun sortFoods(items: List<FoodUsage>, mode: SortMode, reverse: Boolean): List<LibraryFood> {
+        // Natural direction per mode: A→Z, most-frequent first, most-recent first.
+        val comparator: Comparator<FoodUsage> = when (mode) {
+            SortMode.Alphabetical -> compareBy { it.food.name.lowercase() }
+            SortMode.Frequency -> compareByDescending<FoodUsage> { it.usage.count }
                 .thenByDescending { it.usage.lastDate }
-                .thenBy { it.food.name.lowercase() },
-        ).map { it.food }
+                .thenBy { it.food.name.lowercase() }
+            SortMode.LastLog -> compareByDescending<FoodUsage> { it.usage.lastDate }
+                .thenByDescending { it.usage.count }
+                .thenBy { it.food.name.lowercase() }
+        }
+        val sorted = items.sortedWith(comparator)
+        return (if (reverse) sorted.reversed() else sorted).map { it.food }
     }
 
     fun openFood(id: String) {
