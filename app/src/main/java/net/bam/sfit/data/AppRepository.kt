@@ -15,20 +15,33 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 private const val USAGE_WINDOW_DAYS = 28
 private const val HISTORY_MONTHS = 11L
+
+// Energy density of body-weight change — the standard ~3500 kcal/lb rule of thumb.
+// Used to translate a weight change into an implied energy (de)surplus.
+private const val KCAL_PER_KG = 7700.0
 
 // ---- Shared data types (single source of truth for the whole app) ----
 
 enum class Granularity { Daily, Weekly, Monthly }
 
-/** One row in the history table (a day, week, or month). */
+/** One row in the history table (a day, week, or month). The energy columns are
+ *  all kcal/day; which one the UI shows is the user's [EnergyMode] choice.
+ *  - [deficit]: "Actual" — formula maintenance − logged intake.
+ *  - [scaleDeficit]: deficit implied by the weight change alone (scale only).
+ *  - [impliedMaintenance]: real TDEE — logged intake + the scale's energy.
+ *  - [impliedCalories]: real intake — formula maintenance − the scale's energy. */
 data class HistoryRow(
     val label: String,
     val weight: Double?,        // in display unit
     val weightDelta: Double?,   // vs the previous period, display unit
     val deficit: Double?,       // kcal; per-day for Daily, avg/day for Weekly/Monthly
+    val scaleDeficit: Double? = null,
+    val impliedMaintenance: Double? = null,
+    val impliedCalories: Double? = null,
     // ISO date of the underlying weigh-in — set only for Daily rows (a single
     // date), so that day's check-in can be edited. Null for week/month aggregates.
     val date: String? = null,
@@ -110,7 +123,13 @@ class AppRepository(
                 _history.value = HistoryData(
                     c.unit,
                     c.byGranularity.mapValues { (_, rows) ->
-                        rows.map { HistoryRow(it.label, it.weight, it.weightDelta, it.deficit, it.date, it.checkInId) }
+                        rows.map {
+                            HistoryRow(
+                                it.label, it.weight, it.weightDelta, it.deficit,
+                                it.scaleDeficit, it.impliedMaintenance, it.impliedCalories,
+                                it.date, it.checkInId,
+                            )
+                        }
                     },
                 )
             }
@@ -203,7 +222,13 @@ class AppRepository(
                         CachedHistory(
                             unitLabel(prefs.weightUnit),
                             byGran.mapValues { (_, rows) ->
-                                rows.map { CachedHistoryRow(it.label, it.weight, it.weightDelta, it.deficit, it.date, it.checkInId) }
+                                rows.map {
+                                    CachedHistoryRow(
+                                        it.label, it.weight, it.weightDelta, it.deficit,
+                                        it.scaleDeficit, it.impliedMaintenance, it.impliedCalories,
+                                        it.date, it.checkInId,
+                                    )
+                                }
                             },
                         ),
                     )
@@ -475,13 +500,31 @@ private fun buildRows(
     val periods = weightByPeriod.keys.toList() // ascending
     val rows = periods.mapIndexed { i, key ->
         val avgWeight = weightByPeriod.getValue(key).average()
-        val prevWeight = if (i > 0) weightByPeriod.getValue(periods[i - 1]).average() else null
+        val prevKey = if (i > 0) periods[i - 1] else null
+        val prevWeight = prevKey?.let { weightByPeriod.getValue(it).average() }
+        val weightDelta = prevWeight?.let { avgWeight - it }
+        // "Actual" deficit = formula maintenance − logged intake (avg over logged days).
         val deficit = deficitCount[key]?.let { c -> deficitSum.getValue(key) / c }
+        val avgIntake = deficit?.let { maintenance - it }
+
+        // Energy implied purely by the weight change, spread over the days it spans
+        // (the actual gap between weigh-in periods, so skipped weeks/months count right).
+        val days = prevKey?.let { ChronoUnit.DAYS.between(it, key).toDouble() }
+        val scaleDeficit = if (weightDelta != null && days != null && days > 0) {
+            -displayToKg(weightDelta, weightUnit) * KCAL_PER_KG / days
+        } else {
+            null
+        }
         HistoryRow(
             label = periodLabel(key, g),
             weight = avgWeight,
-            weightDelta = prevWeight?.let { avgWeight - it },
+            weightDelta = weightDelta,
             deficit = deficit,
+            scaleDeficit = scaleDeficit,
+            // Real TDEE: what maintenance must be if the log and the scale are both right.
+            impliedMaintenance = if (avgIntake != null && scaleDeficit != null) avgIntake + scaleDeficit else null,
+            // Real intake: what you must have eaten if the formula and the scale are both right.
+            impliedCalories = if (scaleDeficit != null && maintenance > 0) maintenance - scaleDeficit else null,
             // Only a single-day row maps to one editable/deletable check-in.
             date = if (g == Granularity.Daily) key.toString() else null,
             checkInId = if (g == Granularity.Daily) checkInIds[key] else null,

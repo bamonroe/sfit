@@ -233,8 +233,16 @@ Writes:
   (`SortMode` enum + `reverse` flag in the VM; `sortFoods` builds the comparator for the
   natural direction then reverses the whole list when toggled). Tap food/meal → detail
   sheet → log / add-to-meal / edit / make-food / delete.
-- **HistoryScreen / HistoryViewModel** — weight + deficit table, Daily/Weekly/Monthly
-  toggle; Daily rows expand to edit/delete a weigh-in.
+- **HistoryScreen / HistoryViewModel** — weight + energy table, Daily/Weekly/Monthly
+  toggle; Daily rows expand to edit/delete a weigh-in. A **Tune-icon popup** (`EnergyMode`)
+  swaps what the last column shows, all precomputed per row in `buildRows` from the energy
+  identity `intake − maintenance ≈ Δweight·E/N` (`E = KCAL_PER_KG = 7700`, `N` = day-gap
+  between weigh-in periods): **Actual** deficit (formula maintenance − logged intake),
+  **Implied deficit** (scale alone, `−Δw·E/N`), **Implied maintenance** (real TDEE =
+  intake + scale energy), **Implied calories** (real intake = maintenance − scale energy).
+  Deficit modes are signed/green-coded; the level modes (maintenance/intake) are neutral.
+  Expanding a row lists all four. Implied modes are noisy on Daily (single-day water swings),
+  meaningful on Weekly/Monthly.
 - **SettingsScreen** — base URL + API key (no VM; writes `SettingsStore` directly).
 - **MealScreen / MealViewModel** — build a recipe: scan / pick-from-library / manual
   barcode ingredients, optional finished-dish weight with container tare; autosaves draft.

@@ -21,13 +21,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -110,12 +114,40 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
                         }
                     }
                 },
+                actions = {
+                    var energyMenu by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { energyMenu = true }) {
+                            Icon(Icons.Default.Tune, contentDescription = "Energy column")
+                        }
+                        DropdownMenu(expanded = energyMenu, onDismissRequest = { energyMenu = false }) {
+                            Text(
+                                "Energy column",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                            EnergyMode.entries.forEach { mode ->
+                                DropdownMenuItem(
+                                    text = { Text(mode.label) },
+                                    onClick = { vm.selectEnergyMode(mode); energyMenu = false },
+                                    leadingIcon = {
+                                        RadioButton(
+                                            selected = state.energyMode == mode,
+                                            onClick = { vm.selectEnergyMode(mode); energyMenu = false },
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                },
             )
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
             GranularityToggle(state.granularity, onSelect = vm::selectGranularity)
-            TableHeader(state.granularity, state.unit)
+            TableHeader(state.granularity, state.unit, state.energyMode)
             HorizontalDivider()
 
             PullToRefreshBox(
@@ -143,6 +175,7 @@ fun HistoryScreen(vm: HistoryViewModel, onBack: (() -> Unit)? = null) {
                                 row = row,
                                 expanded = expanded == row.label,
                                 unit = state.unit,
+                                energyMode = state.energyMode,
                                 onToggle = { expanded = if (expanded == row.label) null else row.label },
                                 onEdit = { editing = row },
                                 onDelete = { confirmDelete = row },
@@ -171,7 +204,7 @@ private fun GranularityToggle(selected: Granularity, onSelect: (Granularity) -> 
 }
 
 @Composable
-private fun TableHeader(g: Granularity, unit: String) {
+private fun TableHeader(g: Granularity, unit: String, energyMode: EnergyMode) {
     val first = when (g) {
         Granularity.Daily -> "Date"
         Granularity.Weekly -> "Week"
@@ -181,7 +214,7 @@ private fun TableHeader(g: Granularity, unit: String) {
         HeaderCell(first, 1.5f, TextAlign.Start)
         HeaderCell("Weight ($unit)", 1.1f, TextAlign.End)
         HeaderCell("Change", 0.9f, TextAlign.End)
-        HeaderCell("Deficit", 1.0f, TextAlign.End)
+        HeaderCell(energyMode.shortLabel, 1.1f, TextAlign.End)
     }
 }
 
@@ -190,6 +223,7 @@ private fun HistoryRowItem(
     row: HistoryRow,
     expanded: Boolean,
     unit: String,
+    energyMode: EnergyMode,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -202,7 +236,7 @@ private fun HistoryRowItem(
             BodyCell(row.label, 1.5f, TextAlign.Start)
             BodyCell(row.weight?.let { "%.1f".format(it) } ?: "—", 1.1f, TextAlign.End)
             DeltaCell(row.weightDelta, 0.9f)
-            DeficitCell(row.deficit, 1.0f)
+            EnergyCell(row.energy(energyMode), energyMode.isDeficit, 1.1f)
         }
         if (expanded) HistoryRowDetail(row, unit, onEdit, onDelete)
     }
@@ -225,7 +259,14 @@ private fun HistoryRowDetail(row: HistoryRow, unit: String, onEdit: () -> Unit, 
             DetailLine("Weight", text)
         }
         row.weightDelta?.let { DetailLine("Change", "%+.1f %s vs previous".format(it, unit)) }
-        row.deficit?.let { DetailLine("Est. deficit", "${it.roundToInt()} kcal/day") }
+        // The full energy breakdown — all four interpretations side by side.
+        EnergyMode.entries.forEach { m ->
+            row.energy(m)?.let { v ->
+                val n = v.roundToInt()
+                val txt = if (m.isDeficit && n > 0) "+$n kcal/day" else "$n kcal/day"
+                DetailLine(m.label, txt)
+            }
+        }
 
         if (row.date != null) {
             Row(
@@ -357,19 +398,23 @@ private fun RowScope.DeltaCell(delta: Double?, weight: Float) {
 }
 
 @Composable
-private fun RowScope.DeficitCell(deficit: Double?, weight: Float) {
-    if (deficit == null) {
+private fun RowScope.EnergyCell(value: Double?, isDeficit: Boolean, weight: Float) {
+    if (value == null) {
         BodyCell("—", weight, TextAlign.End)
         return
     }
-    val v = deficit.roundToInt()
-    val color = when {
-        v > 0 -> lossGreen           // deficit (good)
+    val v = value.roundToInt()
+    // Deficit modes are signed and colour-coded (deficit = good = green); level
+    // modes (implied maintenance / intake) are a neutral kcal/day amount.
+    val color = if (!isDeficit) {
+        MaterialTheme.colorScheme.onSurface
+    } else when {
+        v > 0 -> lossGreen
         v < 0 -> MaterialTheme.colorScheme.error
         else -> MaterialTheme.colorScheme.onSurface
     }
     Text(
-        text = if (v > 0) "+$v" else "$v",
+        text = if (isDeficit && v > 0) "+$v" else "$v",
         modifier = Modifier.weight(weight),
         textAlign = TextAlign.End,
         style = MaterialTheme.typography.bodyLarge,
