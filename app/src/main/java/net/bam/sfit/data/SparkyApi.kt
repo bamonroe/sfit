@@ -6,6 +6,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -419,18 +420,30 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
             val body = resp.body?.string().orEmpty()
             val ctype = resp.header("Content-Type") ?: "?"
             Log.d(TAG, "HTTP ${resp.code} [$ctype] ${body.length}B: ${body.take(160)}")
+            // An HTML body (captive portal, proxy/error page, or the public URL's bot
+            // block) means we didn't reach the API — say so plainly rather than letting
+            // the JSON parser throw a cryptic "Unexpected token '<'". Check the body, not
+            // the Content-Type: blockers often mislabel an HTML page as JSON.
+            if (looksLikeHtml(body)) error(NOT_THE_API)
             if (!resp.isSuccessful) {
                 error("HTTP ${resp.code}: ${body.take(160).ifBlank { resp.message }}")
-            }
-            if (!ctype.contains("json", ignoreCase = true) && body.startsWith("<")) {
-                error("Not JSON (got $ctype). Check the Server URL.")
             }
             body
         }
     }
 
-    private inline fun <reified T> decode(body: String, fallback: T): T =
-        if (body.isBlank()) fallback else json.decodeFromString(body)
+    private inline fun <reified T> decode(body: String, fallback: T): T {
+        if (body.isBlank()) return fallback
+        if (looksLikeHtml(body)) error(NOT_THE_API)
+        return try {
+            json.decodeFromString(body)
+        } catch (e: SerializationException) {
+            Log.w(TAG, "decode failed: ${e.message}; body: ${body.take(160)}")
+            error("Couldn't read the server's response. Check the Server URL or your connection.")
+        }
+    }
+
+    private fun looksLikeHtml(body: String): Boolean = body.trimStart().startsWith("<")
 
     /** Authenticated request with an optional JSON body, returning the raw body. */
     private suspend fun sendBody(method: String, path: String, bodyJson: String?): String =
@@ -447,6 +460,7 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
             client.newCall(request).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
                 Log.d(TAG, "HTTP ${resp.code} ${body.take(160)}")
+                if (looksLikeHtml(body)) error(NOT_THE_API)
                 if (!resp.isSuccessful) error("HTTP ${resp.code}: ${body.take(200).ifBlank { resp.message }}")
                 body
             }
@@ -734,5 +748,8 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
 
     private companion object {
         const val TAG = "SFit"
+        const val NOT_THE_API =
+            "Couldn't reach SparkyFitness — got a web page, not data. Check the Server URL, " +
+                "and that you're connected (the tailnet address; the public URL blocks the app)."
     }
 }

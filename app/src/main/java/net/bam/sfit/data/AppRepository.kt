@@ -28,6 +28,15 @@ private const val KCAL_PER_KG = 7700.0
 // of that series (not the whole history), keeping each prediction local.
 private const val IMPUTE_WINDOW = 10
 
+/** Turn a refresh failure into something a human can act on. Connectivity issues
+ *  (no network, DNS, timeout) are IOExceptions; the API's own checks already throw
+ *  readable messages, so those pass through. */
+private fun friendlyError(e: Throwable): String = when (e) {
+    is java.io.IOException ->
+        "Can't reach your SparkyFitness server. Check your connection (or the tailnet) and the Server URL."
+    else -> e.message ?: "Something went wrong."
+}
+
 // ---- Shared data types (single source of truth for the whole app) ----
 
 enum class Granularity { Daily, Weekly, Monthly }
@@ -256,7 +265,7 @@ class AppRepository(
                 }
                 _error.value = null
             } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to refresh"
+                _error.value = friendlyError(e)
             } finally {
                 _refreshing.value = false
             }
