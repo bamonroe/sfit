@@ -18,6 +18,8 @@ data class ProviderSearchState(
     val selected: ExternalProvider? = null,
     val query: String = "",
     val loading: Boolean = false,
+    val loadingProviders: Boolean = false,    // provider list fetch in flight
+    val providersLoaded: Boolean = false,     // a fetch completed (success or empty)
     val results: List<BarcodeFood> = emptyList(),
     val searched: Boolean = false,
     val importingKey: String? = null,    // provider_external_id being imported
@@ -34,17 +36,34 @@ class ProviderSearchViewModel(private val repo: AppRepository) : ViewModel() {
         loadProviders()
     }
 
-    private fun loadProviders() {
+    /** Fetch the provider list. Public + idempotent so the screen can retry on open:
+     *  the VM is activity-scoped, so a one-time failure here (a transient tailnet blip,
+     *  the server briefly unreachable, settings not yet ready at app start) must not
+     *  wedge the list for the whole session. On failure we surface the real error rather
+     *  than silently showing "No food providers configured". */
+    fun loadProviders() {
+        if (_state.value.loadingProviders) return
         viewModelScope.launch {
             val s = repo.store.settings.first()
-            if (!s.isConfigured) return@launch
+            if (!s.isConfigured) {
+                _state.update { it.copy(message = "Set the Server URL and API key in Settings first.") }
+                return@launch
+            }
+            _state.update { it.copy(loadingProviders = true) }
             try {
                 val providers = SparkyApi(s.baseUrl, s.apiKey).foodProviders()
                 _state.update {
-                    it.copy(providers = providers, selected = it.selected ?: providers.preferred())
+                    it.copy(
+                        providers = providers,
+                        selected = it.selected ?: providers.preferred(),
+                        loadingProviders = false,
+                        providersLoaded = true,
+                    )
                 }
-            } catch (_: Exception) {
-                // Leave providers empty; the screen shows a hint.
+            } catch (e: Exception) {
+                _state.update {
+                    it.copy(loadingProviders = false, message = e.message ?: "Couldn't load providers")
+                }
             }
         }
     }

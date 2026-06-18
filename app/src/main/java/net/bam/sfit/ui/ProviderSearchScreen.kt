@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -56,6 +57,13 @@ fun ProviderSearchScreen(vm: ProviderSearchViewModel, onBack: () -> Unit) {
     val keyboard = LocalSoftwareKeyboardController.current
     var menuOpen by remember { mutableStateOf(false) }
 
+    // The VM is activity-scoped, so its init-time provider fetch may have failed long ago.
+    // Retry whenever the screen is (re)opened and the list is still empty, so a transient
+    // blip at app start doesn't permanently wedge it.
+    LaunchedEffect(Unit) {
+        if (state.providers.isEmpty()) vm.loadProviders()
+    }
+
     LaunchedEffect(state.message) {
         state.message?.let { snackbar.showSnackbar(it); vm.clearMessage() }
     }
@@ -79,14 +87,29 @@ fun ProviderSearchScreen(vm: ProviderSearchViewModel, onBack: () -> Unit) {
                 onExpandedChange = { menuOpen = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
+                val hasProviders = state.providers.isNotEmpty()
                 OutlinedTextField(
-                    value = state.selected?.providerName ?: "No food providers configured",
+                    value = when {
+                        state.selected != null -> state.selected!!.providerName
+                        state.loadingProviders -> "Loading providers…"
+                        else -> "No providers — tap to retry"
+                    },
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Provider") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuOpen) },
+                    trailingIcon = {
+                        if (hasProviders) ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuOpen)
+                        else if (!state.loadingProviders) Icon(Icons.Default.Refresh, "Retry")
+                    },
                     modifier = Modifier
-                        .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = state.providers.isNotEmpty())
+                        .menuAnchor(MenuAnchorType.PrimaryNotEditable, enabled = hasProviders)
+                        .then(
+                            // When empty the menu anchor is disabled, so make the field itself
+                            // a retry button.
+                            if (!hasProviders && !state.loadingProviders)
+                                Modifier.clickable { vm.loadProviders() }
+                            else Modifier,
+                        )
                         .fillMaxWidth(),
                 )
                 ExposedDropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
