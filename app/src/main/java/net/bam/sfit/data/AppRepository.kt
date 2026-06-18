@@ -88,6 +88,15 @@ data class HistoryData(
     val byGranularity: Map<String, List<HistoryRow>> = emptyMap(),
 )
 
+/** A previous day's meal, ready to re-log verbatim onto today (the "+ → Repeat
+ *  a meal" shortcut). [date] is the most recent prior day this meal type was
+ *  logged; [entries] are that day's entries for that meal. */
+data class RepeatableMeal(
+    val mealType: String,
+    val date: String,
+    val entries: List<FoodEntry>,
+)
+
 /** The food + meal library with per-food usage. */
 data class LibraryData(
     val items: List<FoodUsage> = emptyList(),
@@ -114,6 +123,10 @@ class AppRepository(
     val history: StateFlow<HistoryData> = _history.asStateFlow()
     private val _library = MutableStateFlow(LibraryData())
     val library: StateFlow<LibraryData> = _library.asStateFlow()
+    // Most recent prior day's meal per meal type, for the "Repeat a meal" shortcut.
+    // Derived from the same diary range that powers per-food usage (no extra fetch).
+    private val _lastMeals = MutableStateFlow<List<RepeatableMeal>>(emptyList())
+    val lastMeals: StateFlow<List<RepeatableMeal>> = _lastMeals.asStateFlow()
 
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing.asStateFlow()
@@ -192,7 +205,7 @@ class AppRepository(
                     val reportD = async { api.report(historyStart.toString(), today.toString()) }
                     val foodsD = async { api.foods(perPage = 500) }
                     val mealsD = async { api.meals() }
-                    val usageD = async { computeUsage(api) }
+                    val recentD = async { recentEntries(api) }
                     val loggedMealsD = async {
                         runCatching { api.foodEntryMealsForDate(today.toString()) }.getOrDefault(emptyList())
                     }
@@ -205,7 +218,9 @@ class AppRepository(
                     val report = reportD.await()
                     val foodsPage = foodsD.await()
                     val meals = mealsD.await().sortedBy { it.name.lowercase() }
-                    val usage = usageD.await()
+                    val recent = recentD.await()
+                    val usage = computeUsage(recent)
+                    _lastMeals.value = computeLastMeals(recent)
                     val loggedMeals = loggedMealsD.await()
                     val mealNames = loggedMeals.associate { it.id to it.name }
                     val mealGrams = loggedMeals.associate { it.id to it.quantity }
@@ -449,11 +464,15 @@ class AppRepository(
 
     /** Aggregate the last [USAGE_WINDOW_DAYS] days of diary entries into per-food usage.
      *  One range request rather than a fan-out of per-day calls. */
-    private suspend fun computeUsage(api: SparkyApi): Map<String, Usage> {
+    /** All diary entries in the recent usage window, in one ranged call. */
+    private suspend fun recentEntries(api: SparkyApi): List<FoodEntry> {
         val today = LocalDate.now()
         val start = today.minusDays((USAGE_WINDOW_DAYS - 1).toLong()).toString()
-        val entries = runCatching { api.foodEntriesForDateRange(start, today.toString()) }
+        return runCatching { api.foodEntriesForDateRange(start, today.toString()) }
             .getOrDefault(emptyList())
+    }
+
+    private fun computeUsage(entries: List<FoodEntry>): Map<String, Usage> {
         val acc = HashMap<String, UsageAcc>()
         for (e in entries) {
             if (e.foodId.isBlank()) continue
@@ -463,7 +482,46 @@ class AppRepository(
         }
         return acc.mapValues { Usage(it.value.count, it.value.lastDate) }
     }
+
+    /** For each meal type, the entries from the most recent *prior* day it was
+     *  logged (today excluded — "from last time"), in canonical meal order. */
+    private fun computeLastMeals(entries: List<FoodEntry>): List<RepeatableMeal> {
+        val today = LocalDate.now().toString()
+        // entry_date is a full ISO timestamp (e.g. 2026-06-17T04:00:00.000Z); compare
+        // and group on the date part only.
+        fun day(e: FoodEntry) = e.entryDate.take(10)
+        val byType = entries
+            .filter { it.entryDate.isNotBlank() && day(it) < today && !it.mealType.isNullOrBlank() }
+            .groupBy { it.mealType!!.lowercase() }
+        return MEAL_ORDER.mapNotNull { type ->
+            val es = byType[type] ?: return@mapNotNull null
+            val lastDay = es.maxOf { day(it) }
+            RepeatableMeal(type, lastDay, es.filter { day(it) == lastDay })
+        }
+    }
+
+    /** Re-log every food from a previous day's [meal] onto today, then reconcile
+     *  Today. Each entry keeps its food, variant, quantity and unit. */
+    fun repeatMeal(meal: RepeatableMeal, onResult: (String) -> Unit = {}) {
+        scope.launch {
+            val s = store.settings.first()
+            if (!s.isConfigured) { onResult("Not configured"); return@launch }
+            try {
+                val api = SparkyApi(s.baseUrl, s.apiKey)
+                val today = LocalDate.now().toString()
+                meal.entries.forEach { api.logEntry(it, today) }
+                refreshToday()
+                val n = meal.entries.size
+                onResult("Logged $n item${if (n == 1) "" else "s"} to ${meal.mealType.replaceFirstChar { it.uppercase() }}")
+            } catch (e: Exception) {
+                onResult(e.message ?: "Couldn't repeat that meal")
+            }
+        }
+    }
 }
+
+// Canonical meal-type order shared across the app (matches the Today screen).
+private val MEAL_ORDER = listOf("breakfast", "lunch", "snacks", "dinner")
 
 private class UsageAcc {
     var count = 0

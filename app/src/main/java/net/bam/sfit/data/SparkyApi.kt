@@ -562,6 +562,20 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
         )
     }
 
+    /** POST /food-entries — re-log an existing diary entry onto [date], keeping
+     *  its food, variant, quantity and unit verbatim (for "repeat a meal"). */
+    suspend fun logEntry(entry: FoodEntry, date: String) {
+        sendBody(
+            "POST", "/food-entries",
+            json.encodeToString(
+                LogFoodRequest(
+                    entry.foodId, entry.variantId, entry.quantity,
+                    entry.unit.ifBlank { "g" }, entry.mealType ?: "snacks", date,
+                ),
+            ),
+        )
+    }
+
     /** POST /measurements/check-in — upsert a day's body weight (kg). */
     suspend fun logWeight(date: String, kg: Double) {
         sendBody("POST", "/measurements/check-in", json.encodeToString(CheckInRequest(date, kg)))

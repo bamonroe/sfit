@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import net.bam.sfit.data.AppRepository
 import net.bam.sfit.data.FoodEntry
+import net.bam.sfit.data.RepeatableMeal
 
 /** UI state for the main (remaining-calories) screen. */
 data class DayState(
@@ -38,6 +39,11 @@ class MainViewModel(private val repo: AppRepository) : ViewModel() {
                 error = error,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DayState())
+
+    /** Previous-day meals available to re-log via the "+ → Repeat a meal" shortcut. */
+    val lastMeals: StateFlow<List<RepeatableMeal>> = repo.lastMeals
+
+    fun repeatMeal(meal: RepeatableMeal, onResult: (String) -> Unit) = repo.repeatMeal(meal, onResult)
 
     fun refresh() = repo.refresh()
 

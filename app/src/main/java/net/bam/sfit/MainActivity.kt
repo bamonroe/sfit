@@ -22,17 +22,23 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -45,6 +51,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -56,6 +63,7 @@ import net.bam.sfit.data.ContainerStore
 import net.bam.sfit.data.DraftStore
 import net.bam.sfit.data.LibraryMeal
 import net.bam.sfit.data.Repo
+import net.bam.sfit.data.RepeatableMeal
 import net.bam.sfit.ui.BulkAddViewModel
 import net.bam.sfit.ui.CustomFoodScreen
 import net.bam.sfit.ui.EditFoodScreen
@@ -260,6 +268,8 @@ private fun HomePager(
     var showAdd by remember { mutableStateOf(false) }
     var showWeight by remember { mutableStateOf(false) }
     val historyState by historyVm.state.collectAsStateWithLifecycle()
+    val lastMeals by mainVm.lastMeals.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
     // System back from a side page returns to Today (rather than exiting).
     BackHandler(enabled = pagerState.currentPage != 1) {
         scope.launch { pagerState.animateScrollToPage(1) }
@@ -283,6 +293,10 @@ private fun HomePager(
             selected = pagerState.currentPage,
             modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 6.dp),
         )
+        SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+        )
         // One add-everything button, the same on every page.
         FloatingActionButton(
             onClick = { showAdd = true },
@@ -292,6 +306,11 @@ private fun HomePager(
 
     if (showAdd) {
         AddSheet(
+            lastMeals = lastMeals,
+            onRepeat = { meal ->
+                showAdd = false
+                mainVm.repeatMeal(meal) { msg -> scope.launch { snackbar.showSnackbar(msg) } }
+            },
             onDismiss = { showAdd = false },
             onLogFood = { showAdd = false; onLogFood() },
             onLogWeight = { showAdd = false; showWeight = true },
@@ -314,6 +333,8 @@ private fun HomePager(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddSheet(
+    lastMeals: List<RepeatableMeal>,
+    onRepeat: (RepeatableMeal) -> Unit,
     onDismiss: () -> Unit,
     onLogFood: () -> Unit,
     onLogWeight: () -> Unit,
@@ -325,28 +346,75 @@ private fun AddSheet(
     val sheetState = rememberModalBottomSheetState()
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding()) {
-            AddItem(Icons.Default.RestaurantMenu, "Log food", "Add a food to today's diary", onLogFood)
-            AddItem(Icons.Default.MonitorWeight, "Log weight", "Record a weigh-in", onLogWeight)
-            AddItem(Icons.Default.Restaurant, "New meal", "Build a recipe", onNewMeal)
-            AddItem(Icons.Default.QrCodeScanner, "Scan barcode", "Add a food by barcode", onScan)
-            AddItem(Icons.Default.TravelExplore, "Search foods", "Find a food from a provider", onSearch)
-            AddItem(Icons.Default.Create, "Custom food", "Enter a food's nutrition manually", onCustomFood)
+            // "Fill in from last time": a Repeat submenu re-logs a previous day's meal.
+            if (lastMeals.isNotEmpty()) {
+                var repeatOpen by remember { mutableStateOf(false) }
+                AddItem(
+                    Icons.Default.Replay,
+                    "Repeat a meal",
+                    "Re-log a previous day's meal",
+                    trailing = {
+                        Icon(
+                            if (repeatOpen) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                        )
+                    },
+                ) { repeatOpen = !repeatOpen }
+                if (repeatOpen) {
+                    lastMeals.forEach { meal ->
+                        AddItem(
+                            icon = null,
+                            title = meal.mealType.replaceFirstChar { it.uppercase() },
+                            subtitle = repeatSubtitle(meal),
+                            indent = 32.dp,
+                        ) { onRepeat(meal) }
+                    }
+                }
+                HorizontalDivider()
+            }
+            AddItem(Icons.Default.RestaurantMenu, "Log food", "Add a food to today's diary") { onLogFood() }
+            AddItem(Icons.Default.MonitorWeight, "Log weight", "Record a weigh-in") { onLogWeight() }
+            AddItem(Icons.Default.Restaurant, "New meal", "Build a recipe") { onNewMeal() }
+            AddItem(Icons.Default.QrCodeScanner, "Scan barcode", "Add a food by barcode") { onScan() }
+            AddItem(Icons.Default.TravelExplore, "Search foods", "Find a food from a provider") { onSearch() }
+            AddItem(Icons.Default.Create, "Custom food", "Enter a food's nutrition manually") { onCustomFood() }
         }
     }
 }
 
+/** "Oats, Banana, Coffee · yesterday" — the foods and how long ago they were logged. */
+private fun repeatSubtitle(meal: RepeatableMeal): String {
+    val foods = meal.entries.mapNotNull { it.foodName?.takeIf(String::isNotBlank) }.distinct()
+    val names = foods.take(3).joinToString(", ") +
+        if (foods.size > 3) " +${foods.size - 3} more" else ""
+    // meal.date is a bare ISO date, but entry dates can arrive as full timestamps —
+    // take the date part to be safe.
+    val date = java.time.LocalDate.parse(meal.date.take(10))
+    val days = java.time.temporal.ChronoUnit.DAYS.between(date, java.time.LocalDate.now())
+    val ago = when (days) {
+        0L -> "today"
+        1L -> "yesterday"
+        in 2L..6L -> "$days days ago"
+        else -> date.format(java.time.format.DateTimeFormatter.ofPattern("MMM d"))
+    }
+    return if (names.isBlank()) ago else "$names · $ago"
+}
+
 @Composable
 private fun AddItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
     title: String,
     subtitle: String,
+    indent: Dp = 0.dp,
+    trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = { Text(subtitle) },
-        leadingContent = { Icon(icon, contentDescription = null) },
-        modifier = Modifier.clickable(onClick = onClick),
+        leadingContent = icon?.let { { Icon(it, contentDescription = null) } },
+        trailingContent = trailing,
+        modifier = Modifier.clickable(onClick = onClick).padding(start = indent),
     )
 }
 
