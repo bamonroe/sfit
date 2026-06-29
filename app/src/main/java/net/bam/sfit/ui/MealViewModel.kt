@@ -171,7 +171,7 @@ class MealViewModel(
 
     fun createMeal() {
         val d = draft
-        val lines = d.ingredients.filter { it.grams > 0 }
+        val lines = d.ingredients.filter { it.grams != 0.0 }
             .map { MealLine(it.foodId, it.variantId, it.grams) }
         when {
             d.name.isBlank() -> { _state.update { it.copy(error = "Name the meal first") }; return }

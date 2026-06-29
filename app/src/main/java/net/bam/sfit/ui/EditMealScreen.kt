@@ -155,9 +155,12 @@ fun EditMealScreen(meal: LibraryMeal, store: SettingsStore, onDone: () -> Unit) 
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    SignToggle(negative = line.grams.startsWith("-")) {
+                        line.grams = flipGramSign(line.grams)
+                    }
                     OutlinedTextField(
                         value = line.grams,
-                        onValueChange = { line.grams = it.filter { c -> c.isDigit() || c == '.' } },
+                        onValueChange = { line.grams = signedGramFilter(it) },
                         label = { Text("g") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -224,7 +227,7 @@ fun EditMealScreen(meal: LibraryMeal, store: SettingsStore, onDone: () -> Unit) 
                             val s = store.settings.first()
                             val mealLines = lines.mapNotNull { l ->
                                 val g = l.grams.toDoubleOrNull() ?: 0.0
-                                if (g > 0) MealLine(l.foodId, l.variantId, g) else null
+                                if (g != 0.0) MealLine(l.foodId, l.variantId, g) else null
                             }
                             SparkyApi(s.baseUrl, s.apiKey)
                                 .updateMeal(meal.id, name.trim(), mealLines, netWeight.toDoubleOrNull())
@@ -235,7 +238,7 @@ fun EditMealScreen(meal: LibraryMeal, store: SettingsStore, onDone: () -> Unit) 
                         }
                     }
                 },
-                enabled = !saving && name.isNotBlank() && lines.any { (it.grams.toDoubleOrNull() ?: 0.0) > 0 },
+                enabled = !saving && name.isNotBlank() && lines.any { (it.grams.toDoubleOrNull() ?: 0.0) != 0.0 },
                 modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             ) {
                 if (saving) {

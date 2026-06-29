@@ -31,6 +31,35 @@ fun fmtNum(d: Double): String =
 fun fullNum(d: Double): String =
     if (d == d.toLong().toDouble()) d.toLong().toString() else d.toString()
 
+/** Numeric input filter for gram fields that may be negative (a subtracted
+ *  ingredient, e.g. whey poured off). Keeps one optional leading '-', digits and
+ *  dots; strips everything else. The minus is entered via [SignToggle], not the
+ *  soft keyboard (which often hides it). */
+fun signedGramFilter(s: String): String {
+    val body = s.filter { it.isDigit() || it == '.' }
+    return if (s.startsWith("-")) "-$body" else body
+}
+
+/** Flip the sign of a gram string for the ± toggle. */
+fun flipGramSign(s: String): String = when {
+    s.startsWith("-") -> s.drop(1)
+    s.isBlank() -> "-"
+    else -> "-$s"
+}
+
+/** Compact +/− toggle that marks an ingredient as subtracted (negative grams). */
+@Composable
+fun SignToggle(negative: Boolean, onToggle: () -> Unit) {
+    IconButton(onClick = onToggle) {
+        Text(
+            if (negative) "−" else "+",
+            style = MaterialTheme.typography.titleLarge,
+            color = if (negative) MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 /** One macro stat: bold grams over a small label. */
 @Composable
 fun MacroCell(label: String, grams: Double, modifier: Modifier = Modifier) {

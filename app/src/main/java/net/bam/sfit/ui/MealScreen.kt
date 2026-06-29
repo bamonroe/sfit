@@ -357,7 +357,7 @@ private fun ManageContainersDialog(
 
 @Composable
 private fun IngredientRow(ing: DraftIngredient, onGrams: (Double) -> Unit, onRemove: () -> Unit) {
-    var text by remember(ing.barcode) { mutableStateOf(if (ing.grams > 0) ing.grams.roundToInt().toString() else "") }
+    var text by remember(ing.barcode) { mutableStateOf(if (ing.grams != 0.0) fullNum(ing.grams) else "") }
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -373,10 +373,14 @@ private fun IngredientRow(ing: DraftIngredient, onGrams: (Double) -> Unit, onRem
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        SignToggle(negative = text.startsWith("-")) {
+            text = flipGramSign(text)
+            onGrams(text.toDoubleOrNull() ?: 0.0)
+        }
         OutlinedTextField(
             value = text,
             onValueChange = {
-                text = it.filter { c -> c.isDigit() || c == '.' }
+                text = signedGramFilter(it)
                 onGrams(text.toDoubleOrNull() ?: 0.0)
             },
             label = { Text("g") },
