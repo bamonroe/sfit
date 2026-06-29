@@ -34,6 +34,13 @@ via the `*.apk` rule.
 adb -s <serial> install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 Known devices (serials drift; re-check with `adb devices -l`):
+- **Local emulator (preferred for testing/debugging)** — a headless Android 14 emulator
+  runs on this host in Docker; scaffold + full instructions at `/data/android` (see its
+  `CLAUDE.md`). Prefer it for tap-tests and UI debugging — it's always available and
+  avoids the flaky phone link. Drive it via `docker exec android-emulator adb …` (e.g.
+  `docker cp …/app-debug.apk android-emulator:/tmp/ && docker exec android-emulator adb install -r /tmp/app-debug.apk`).
+  Requires `/dev/kvm` (Intel VT-x enabled in BIOS); if `docker compose up` fails on the
+  device mapping, see `/data/android/CLAUDE.md` step 1.
 - **Tablet** — Galaxy Tab SM-P620, USB, serial `R52Y50CAJZB`. Used for testing.
 - **Phone** — Pixel 8a (`akita`), the daily driver. Usually reached over **wireless
   debugging** on the tailnet, not USB.
