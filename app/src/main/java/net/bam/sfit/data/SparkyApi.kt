@@ -675,6 +675,17 @@ class SparkyApi(baseUrl: String, private val apiKey: String) {
     /** Import a provider search result into the food DB (POST /foods). */
     suspend fun addFood(food: BarcodeFood): Boolean = importFood(food).id.isNotBlank()
 
+    /** Import a provider food and return it carrying its new DB id + variant id,
+     *  ready to log or add to a meal. Throws if the server didn't save it. */
+    suspend fun importFoodResolved(food: BarcodeFood): BarcodeFood {
+        val saved = importFood(food)
+        if (saved.id.isBlank() || saved.defaultVariant.id.isBlank()) error("Import didn't return a saved food")
+        return food.copy(
+            id = saved.id,
+            defaultVariant = food.defaultVariant.copy(id = saved.defaultVariant.id),
+        )
+    }
+
     /** POST /foods — create a custom (manually-entered) food. */
     suspend fun createFood(
         name: String,

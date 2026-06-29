@@ -29,7 +29,6 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.RestaurantMenu
-import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -79,8 +78,6 @@ import net.bam.sfit.ui.MainViewModel
 import net.bam.sfit.ui.MealScreen
 import net.bam.sfit.ui.MealViewModel
 import net.bam.sfit.ui.PickFoodScreen
-import net.bam.sfit.ui.ProviderSearchScreen
-import net.bam.sfit.ui.ProviderSearchViewModel
 import net.bam.sfit.ui.ScannerScreen
 import net.bam.sfit.ui.SettingsScreen
 import net.bam.sfit.ui.theme.SFitTheme
@@ -98,7 +95,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal, ProviderSearch, LogFood, CustomFood, PickFood }
+private enum class Screen { Main, Settings, Meal, Scanner, BulkAdd, EditFood, EditMeal, LogFood, CustomFood, PickFood }
 
 @Composable
 private fun AppRoot(
@@ -120,7 +117,6 @@ private fun AppRoot(
                 modelClass.isAssignableFrom(MealViewModel::class.java) -> MealViewModel(store, draftStore, containerStore)
                 modelClass.isAssignableFrom(LibraryViewModel::class.java) -> LibraryViewModel(repo)
                 modelClass.isAssignableFrom(BulkAddViewModel::class.java) -> BulkAddViewModel(store)
-                modelClass.isAssignableFrom(ProviderSearchViewModel::class.java) -> ProviderSearchViewModel(repo)
                 else -> throw IllegalArgumentException("Unknown ViewModel $modelClass")
             } as T
         }
@@ -130,7 +126,6 @@ private fun AppRoot(
     val mealVm: MealViewModel = viewModel(factory = factory)
     val libraryVm: LibraryViewModel = viewModel(factory = factory)
     val bulkVm: BulkAddViewModel = viewModel(factory = factory)
-    val providerVm: ProviderSearchViewModel = viewModel(factory = factory)
 
     // System back mirrors the on-screen back arrows for the pushed screens.
     BackHandler(enabled = screen != Screen.Main) {
@@ -140,7 +135,7 @@ private fun AppRoot(
             Screen.EditFood -> { editFood = null; libraryVm.load(); screen = Screen.Main }
             Screen.EditMeal -> { editMeal = null; libraryVm.load(); screen = Screen.Main }
             Screen.PickFood -> screen = Screen.Meal
-            Screen.ProviderSearch, Screen.LogFood, Screen.CustomFood -> screen = Screen.Main
+            Screen.LogFood, Screen.CustomFood -> screen = Screen.Main
             else -> screen = Screen.Main // Settings, Meal
         }
     }
@@ -154,7 +149,6 @@ private fun AppRoot(
             onOpenSettings = { screen = Screen.Settings },
             onOpenMeal = { screen = Screen.Meal },
             onBulkAdd = { bulkVm.reset(); screen = Screen.BulkAdd },
-            onProviderSearch = { screen = Screen.ProviderSearch },
             onLogFood = { screen = Screen.LogFood },
             onCustomFood = { screen = Screen.CustomFood },
             onEditFood = { food -> editFood = food; screen = Screen.EditFood },
@@ -214,10 +208,6 @@ private fun AppRoot(
                 )
             }
         }
-        Screen.ProviderSearch -> ProviderSearchScreen(
-            providerVm,
-            onBack = { screen = Screen.Main },
-        )
         Screen.LogFood -> LogFoodScreen(
             libraryVm,
             onBack = { screen = Screen.Main },
@@ -255,7 +245,6 @@ private fun HomePager(
     onOpenSettings: () -> Unit,
     onOpenMeal: () -> Unit,
     onBulkAdd: () -> Unit,
-    onProviderSearch: () -> Unit,
     onLogFood: () -> Unit,
     onCustomFood: () -> Unit,
     onEditFood: (BarcodeFood) -> Unit,
@@ -316,7 +305,6 @@ private fun HomePager(
             onLogWeight = { showAdd = false; showWeight = true },
             onNewMeal = { showAdd = false; onOpenMeal() },
             onScan = { showAdd = false; onBulkAdd() },
-            onSearch = { showAdd = false; onProviderSearch() },
             onCustomFood = { showAdd = false; onCustomFood() },
         )
     }
@@ -340,7 +328,6 @@ private fun AddSheet(
     onLogWeight: () -> Unit,
     onNewMeal: () -> Unit,
     onScan: () -> Unit,
-    onSearch: () -> Unit,
     onCustomFood: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -376,7 +363,6 @@ private fun AddSheet(
             AddItem(Icons.Default.MonitorWeight, "Log weight", "Record a weigh-in") { onLogWeight() }
             AddItem(Icons.Default.Restaurant, "New meal", "Build a recipe") { onNewMeal() }
             AddItem(Icons.Default.QrCodeScanner, "Scan barcode", "Add a food by barcode") { onScan() }
-            AddItem(Icons.Default.TravelExplore, "Search foods", "Find a food from a provider") { onSearch() }
             AddItem(Icons.Default.Create, "Custom food", "Enter a food's nutrition manually") { onCustomFood() }
         }
     }

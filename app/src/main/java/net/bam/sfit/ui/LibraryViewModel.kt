@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.bam.sfit.data.AppRepository
 import net.bam.sfit.data.BarcodeFood
+import net.bam.sfit.data.ExternalProvider
 import net.bam.sfit.data.FoodUsage
 import net.bam.sfit.data.LibraryFood
 import net.bam.sfit.data.LibraryMeal
@@ -40,6 +41,14 @@ data class LibraryState(
     val detail: BarcodeFood? = null,     // food detail shown in the sheet
     val mealDetail: LibraryMeal? = null, // meal detail shown in the sheet
     val message: String? = null,
+    // Food-source picker (Log-food / Add-to-meal screens): null source = local library.
+    val source: ExternalProvider? = null,
+    val providers: List<ExternalProvider> = emptyList(),
+    val loadingProviders: Boolean = false,
+    val providerResults: List<BarcodeFood> = emptyList(),
+    val searching: Boolean = false,
+    val searched: Boolean = false,
+    val importingKey: String? = null,    // provider result currently importing
 )
 
 /** Library UI bits that aren't shared app data (live only in this screen). */
@@ -50,6 +59,13 @@ private data class LibraryUi(
     val detail: BarcodeFood? = null,
     val mealDetail: LibraryMeal? = null,
     val message: String? = null,
+    val source: ExternalProvider? = null,
+    val providers: List<ExternalProvider> = emptyList(),
+    val loadingProviders: Boolean = false,
+    val providerResults: List<BarcodeFood> = emptyList(),
+    val searching: Boolean = false,
+    val searched: Boolean = false,
+    val importingKey: String? = null,
 )
 
 class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
@@ -73,6 +89,13 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
                 detail = u.detail,
                 mealDetail = u.mealDetail,
                 message = u.message,
+                source = u.source,
+                providers = u.providers,
+                loadingProviders = u.loadingProviders,
+                providerResults = u.providerResults,
+                searching = u.searching,
+                searched = u.searched,
+                importingKey = u.importingKey,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryState())
 
@@ -87,6 +110,82 @@ class LibraryViewModel(private val repo: AppRepository) : ViewModel() {
 
     /** Filter the library by name/brand — no network, all data is cached. */
     fun setQuery(q: String) = ui.update { it.copy(query = q) }
+
+    // ---- Food-source picker (Log-food / Add-to-meal) ----
+
+    /** Reset to the local library with a clean query, and (lazily) load the
+     *  configured online providers. Call when the picker screen opens. */
+    fun openPicker() {
+        ui.update {
+            it.copy(source = null, query = "", providerResults = emptyList(), searched = false)
+        }
+        loadSources()
+    }
+
+    /** Fetch the configured online food providers for the source dropdown. Skips
+     *  if already loaded or in flight; retries after a failed (empty) load. */
+    fun loadSources() {
+        if (ui.value.loadingProviders || ui.value.providers.isNotEmpty()) return
+        viewModelScope.launch {
+            val s = repo.store.settings.first()
+            if (!s.isConfigured) return@launch
+            ui.update { it.copy(loadingProviders = true) }
+            try {
+                val providers = SparkyApi(s.baseUrl, s.apiKey).foodProviders()
+                ui.update { it.copy(providers = providers, loadingProviders = false) }
+            } catch (e: Exception) {
+                ui.update { it.copy(loadingProviders = false, message = e.message ?: "Couldn't load providers") }
+            }
+        }
+    }
+
+    /** Switch the search source. [provider] = null means the local library. */
+    fun selectSource(provider: ExternalProvider?) {
+        if (provider?.id == ui.value.source?.id) return
+        ui.update { it.copy(source = provider, providerResults = emptyList(), searched = false) }
+        if (provider != null && ui.value.query.isNotBlank()) searchProvider()
+    }
+
+    /** Search the selected online provider (no-op in library mode). Library mode
+     *  filters cached foods live via [setQuery]; provider search is explicit. */
+    fun searchProvider() {
+        val provider = ui.value.source ?: return
+        val q = ui.value.query.trim()
+        if (q.isBlank() || ui.value.searching) return
+        viewModelScope.launch {
+            val s = repo.store.settings.first()
+            if (!s.isConfigured) return@launch
+            ui.update { it.copy(searching = true, searched = true, message = null) }
+            try {
+                val results = SparkyApi(s.baseUrl, s.apiKey).searchProvider(provider.providerType, q, provider.id)
+                ui.update { it.copy(searching = false, providerResults = results) }
+            } catch (e: Exception) {
+                ui.update {
+                    it.copy(searching = false, providerResults = emptyList(), message = e.message ?: "Search failed")
+                }
+            }
+        }
+    }
+
+    /** Import an online result into the library, then open its detail sheet carrying
+     *  real DB ids so the caller can log it / add it to a meal. Refreshes shared data
+     *  so the new food shows up in the library too. */
+    fun importProviderFood(food: BarcodeFood) {
+        if (ui.value.importingKey != null) return
+        val key = food.providerExternalId ?: food.name
+        viewModelScope.launch {
+            val s = repo.store.settings.first()
+            if (!s.isConfigured) return@launch
+            ui.update { it.copy(importingKey = key) }
+            try {
+                val saved = SparkyApi(s.baseUrl, s.apiKey).importFoodResolved(food)
+                ui.update { it.copy(importingKey = null, detail = saved) }
+                repo.refresh()
+            } catch (e: Exception) {
+                ui.update { it.copy(importingKey = null, message = e.message ?: "Import failed") }
+            }
+        }
+    }
 
     private fun FoodUsage.matches(q: String): Boolean =
         q.isBlank() || food.name.contains(q, ignoreCase = true) ||
